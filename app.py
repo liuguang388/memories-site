@@ -37,6 +37,10 @@ ALLOWED_MUSIC = {'mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac'}
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 
+# Ensure tables are created (especially for SQLite on first deploy)
+with app.app_context():
+    db.create_all()
+
 
 # ─── Models ──────────────────────────────────────────────────────────────────
 
