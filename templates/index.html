@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}记忆时光 - 珍藏每一刻{% endblock %}
+
+{% block content %}
+<!-- 英雄区域 -->
+<section class="hero-section">
+    <div class="hero-content">
+        <div class="hero-badge">✦ MEMORIES ✦</div>
+        <h1 class="hero-title">
+            <span class="title-line">岁月如歌</span>
+            <span class="title-line accent">记忆如诗</span>
+        </h1>
+        <p class="hero-desc">每一帧画面，都是时光赠予的礼物。在这里，珍藏那些永不褪色的瞬间。</p>
+        <div class="hero-scroll">
+            <span>探索记忆</span>
+            <div class="scroll-indicator">⌄</div>
+        </div>
+    </div>
+    <div class="hero-overlay"></div>
+</section>
+
+<!-- 分类卡片区域 -->
+<section class="categories-section" id="categories">
+    <div class="section-header">
+        <h2 class="section-title">
+            <span class="title-decor">—</span>
+            记忆长廊
+            <span class="title-decor">—</span>
+        </h2>
+        <p class="section-subtitle">每一段时光，都值得被温柔珍藏</p>
+    </div>
+
+    {% if categories %}
+    <div class="categories-grid">
+        {% for cat in categories %}
+        <a href="{{ url_for('view_category', slug=cat.slug) }}" class="category-card"
+           style="animation-delay: {{ loop.index0 * 0.1 }}s">
+            <div class="card-image">
+                {% if cat.cover_image %}
+                <img src="{{ url_for('static', filename=cat.cover_image) }}" alt="{{ cat.name }}" loading="lazy">
+                {% else %}
+                <div class="card-placeholder">
+                    <span class="placeholder-icon">{{ cat.icon }}</span>
+                </div>
+                {% endif %}
+                <div class="card-image-overlay"></div>
+            </div>
+            <div class="card-body">
+                <div class="card-icon">{{ cat.icon }}</div>
+                <h3 class="card-title">{{ cat.name }}</h3>
+                {% if cat.description %}
+                <p class="card-desc">{{ cat.description }}</p>
+                {% endif %}
+                <span class="card-count">{{ cat.medias.count() }} 份记忆</span>
+            </div>
+            <div class="card-shine"></div>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-icon">📂</div>
+        <h3>记忆长廊正在建设中</h3>
+        <p>管理员正在精心布置这片记忆空间，敬请期待...</p>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

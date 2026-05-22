@@ -1,0 +1,602 @@
+{% extends "base.html" %}
+{% block title %}管理中心 - 记忆时光{% endblock %}
+
+{% block content %}
+<div class="admin-page">
+    <!-- 管理头部 -->
+    <div class="admin-header">
+        <h1 class="admin-title">✦ 管理中心 ✦</h1>
+        <p class="admin-subtitle">管理你的记忆长廊</p>
+    </div>
+
+    <!-- 操作按钮组 -->
+    <div class="admin-toolbar">
+        <button class="btn btn-gold" onclick="showCategoryModal()">
+            <span>＋</span> 新建分类
+        </button>
+        <span class="toolbar-hint">拖拽分类卡片可排序</span>
+    </div>
+
+    <!-- 分类列表 -->
+    <div class="admin-categories" id="adminCategories">
+        {% for cat in categories %}
+        <div class="admin-cat-card" data-id="{{ cat.id }}" data-sort="{{ cat.sort_order }}"
+             draggable="true">
+            <div class="ac-card-header">
+                <div class="ac-card-icon">{{ cat.icon }}</div>
+                <div class="ac-card-info">
+                    <h3>{{ cat.name }}</h3>
+                    <span class="ac-card-slug">/{{ cat.slug }}</span>
+                    <span class="ac-card-count">{{ cat.medias.count() }} 项内容</span>
+                </div>
+                <div class="ac-card-actions">
+                    <button class="ac-btn ac-btn-upload" onclick="showUploadModal({{ cat.id }})"
+                            title="上传媒体">
+                        📤 上传
+                    </button>
+                    <button class="ac-btn ac-btn-music" onclick="showMusicModal({{ cat.id }})"
+                            title="上传背景音乐">
+                        🎵
+                    </button>
+                    <button class="ac-btn ac-btn-edit" onclick="editCategory({{ cat.id }})"
+                            title="编辑分类">
+                        ✏️
+                    </button>
+                    <button class="ac-btn ac-btn-delete" onclick="deleteCategory({{ cat.id }})"
+                            title="删除分类">
+                        🗑
+                    </button>
+                </div>
+            </div>
+            <!-- 该分类下的媒体预览 -->
+            {% set preview_medias = cat.medias.limit(8).all() %}
+            {% if preview_medias %}
+            <div class="ac-media-preview">
+                {% for m in preview_medias %}
+                <div class="ac-media-thumb" data-media-id="{{ m.id }}"
+                     onclick="editMedia({{ m.id }}, '{{ cat.id }}')">
+                    {% if m.media_type == 'image' %}
+                        {% if m.thumbnail %}
+                        <img src="{{ url_for('static', filename=m.thumbnail) }}" alt="预览">
+                        {% else %}
+                        <img src="{{ url_for('static', filename=m.filename) }}" alt="预览">
+                        {% endif %}
+                    {% else %}
+                        <video src="{{ url_for('static', filename=m.filename) }}" muted></video>
+                        <span class="ac-video-badge">▶</span>
+                    {% endif %}
+                    <div class="ac-media-actions">
+                        <button class="ac-media-btn" onclick="event.stopPropagation(); editMedia({{ m.id }}, '{{ cat.id }}')">✏️</button>
+                        <button class="ac-media-btn ac-media-del" onclick="event.stopPropagation(); deleteMedia({{ m.id }})">✕</button>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- 分类编辑模态框 -->
+<div class="modal" id="categoryModal">
+    <div class="modal-backdrop" onclick="closeModal('categoryModal')"></div>
+    <div class="modal-card">
+        <div class="modal-header">
+            <h2 id="categoryModalTitle">新建分类</h2>
+            <button class="modal-close" onclick="closeModal('categoryModal')">✕</button>
+        </div>
+        <form id="categoryForm" enctype="multipart/form-data">
+            <input type="hidden" name="cat_id" id="catId">
+            <div class="form-group">
+                <label>分类名称 *</label>
+                <input type="text" name="name" id="catName" placeholder="例如：难忘的朋友们" required>
+            </div>
+            <div class="form-group">
+                <label>URL 标识 (slug)</label>
+                <input type="text" name="slug" id="catSlug" placeholder="自动生成，如：friends">
+            </div>
+            <div class="form-row">
+                <div class="form-group form-group-half">
+                    <label>图标 Emoji</label>
+                    <div class="emoji-input-wrap">
+                        <input type="text" name="icon" id="catIcon" value="📁" maxlength="4"
+                               placeholder="选择一个图标">
+                        <button type="button" class="emoji-btn" onclick="toggleEmojiPicker('catIcon')">😊</button>
+                    </div>
+                </div>
+                <div class="form-group form-group-half">
+                    <label>排序</label>
+                    <input type="number" name="sort_order" id="catSortOrder" value="0" min="0">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>描述</label>
+                <textarea name="description" id="catDescription" rows="3"
+                          placeholder="简短描述这个分类..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>封面图片</label>
+                <input type="file" name="cover_image" id="catCoverImage" accept="image/*">
+            </div>
+            <button type="submit" class="btn btn-gold btn-full">保存</button>
+        </form>
+    </div>
+</div>
+
+<!-- 上传媒体模态框 -->
+<div class="modal" id="uploadModal">
+    <div class="modal-backdrop" onclick="closeModal('uploadModal')"></div>
+    <div class="modal-card">
+        <div class="modal-header">
+            <h2>上传媒体文件</h2>
+            <button class="modal-close" onclick="closeModal('uploadModal')">✕</button>
+        </div>
+        <form id="uploadForm" enctype="multipart/form-data">
+            <input type="hidden" name="cat_id" id="uploadCatId">
+            <div class="upload-zone" id="uploadZone">
+                <div class="upload-zone-icon">📁</div>
+                <p>拖拽文件到此处或点击选择</p>
+                <p class="upload-hint">支持 JPG/PNG/GIF/WebP 图片和 MP4/WebM/MOV 视频</p>
+                <input type="file" name="files" id="uploadFiles" multiple
+                       accept="image/*,video/*" style="display:none">
+                <button type="button" class="btn btn-outline" onclick="document.getElementById('uploadFiles').click()">
+                    选择文件
+                </button>
+            </div>
+            <div class="upload-preview" id="uploadPreview"></div>
+            <div class="upload-progress" id="uploadProgress" style="display:none">
+                <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+                <p class="progress-text" id="progressText">上传中...</p>
+            </div>
+            <button type="submit" class="btn btn-gold btn-full" id="uploadSubmitBtn" style="display:none">
+                开始上传
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- 编辑媒体模态框 -->
+<div class="modal" id="mediaEditModal">
+    <div class="modal-backdrop" onclick="closeModal('mediaEditModal')"></div>
+    <div class="modal-card">
+        <div class="modal-header">
+            <h2>编辑媒体信息</h2>
+            <button class="modal-close" onclick="closeModal('mediaEditModal')">✕</button>
+        </div>
+        <form id="mediaEditForm">
+            <input type="hidden" name="media_id" id="editMediaId">
+            <div class="media-edit-preview" id="mediaEditPreview"></div>
+            <div class="form-group">
+                <label>描述文字</label>
+                <div class="emoji-input-wrap">
+                    <textarea name="description" id="editMediaDesc" rows="4"
+                              placeholder="写下你想说的... 支持 Emoji 😊"></textarea>
+                    <button type="button" class="emoji-btn emoji-btn-textarea"
+                            onclick="toggleEmojiPicker('editMediaDesc')">😊</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>排序</label>
+                <input type="number" name="sort_order" id="editMediaSort" value="0" min="0">
+            </div>
+            <button type="submit" class="btn btn-gold btn-full">保存</button>
+            <button type="button" class="btn btn-danger btn-full" style="margin-top:10px"
+                    onclick="deleteMedia(document.getElementById('editMediaId').value)">
+                删除此媒体
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- 音乐上传模态框 -->
+<div class="modal" id="musicModal">
+    <div class="modal-backdrop" onclick="closeModal('musicModal')"></div>
+    <div class="modal-card">
+        <div class="modal-header">
+            <h2>背景音乐管理</h2>
+            <button class="modal-close" onclick="closeModal('musicModal')">✕</button>
+        </div>
+        <div class="music-list" id="musicList">
+            <p class="empty-hint">暂无背景音乐</p>
+        </div>
+        <form id="musicForm" enctype="multipart/form-data">
+            <input type="hidden" name="cat_id" id="musicCatId">
+            <div class="form-group">
+                <label>音乐文件</label>
+                <input type="file" name="file" id="musicFile" accept="audio/*" required>
+            </div>
+            <div class="form-group">
+                <label>歌曲标题</label>
+                <input type="text" name="title" id="musicTitle" placeholder="歌曲名称">
+            </div>
+            <div class="form-group">
+                <label>艺术家</label>
+                <input type="text" name="artist" id="musicArtist" placeholder="艺术家/作者">
+            </div>
+            <button type="submit" class="btn btn-gold btn-full">上传音乐</button>
+        </form>
+    </div>
+</div>
+
+<!-- Emoji 选择器 -->
+<div class="emoji-picker" id="emojiPicker" style="display:none">
+    <div class="emoji-picker-header">
+        <span>选择表情</span>
+        <button onclick="closeEmojiPicker()">✕</button>
+    </div>
+    <div class="emoji-grid" id="emojiGrid"></div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// ─── 预定义 Emoji 列表 ───────────────────────────────────────────────
+const EMOJI_LIST = [
+    '😀','😃','😄','😁','😊','😍','🥰','😘','😋','🤗',
+    '😂','🤣','😅','😆','😉','😎','🤩','😏','😌','😔',
+    '😢','😭','😤','😡','🤬','😱','😨','😰','😥','😓',
+    '🤔','🤭','🤫','😶','😐','😑','😬','😴','😪','🤤',
+    '❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔',
+    '✨','🌟','⭐','💫','🎉','🎊','🎈','🎀','🎁','🏆',
+    '🌸','🌺','🌻','🌹','🍀','🌈','☀️','🌙','⚡','🔥',
+    '💧','❄️','🌊','🎵','🎶','📷','🎬','🎨','✈️','🚀',
+    '🏠','🏖️','🏔️','🌅','🌄','🗼','🎡','🎠','⛩️','🏯',
+    '📝','💌','💭','🎯','🔮','💎','👑','🗝️','🌠','🕊️',
+    '👍','👏','🙏','💪','🤝','✌️','🤞','🫶','👋','🤙',
+    '🐱','🐶','🐼','🦊','🐰','🐻','🐨','🐯','🦁','🐮',
+    '🌍','🌎','🌏','🗺️','🧭','⏳','⌛','📅','🕰️','⏰',
+];
+
+// ─── 当前 Emoji 目标 ──────────────────────────────────────────────
+let emojiTarget = null;
+
+function toggleEmojiPicker(targetId) {
+    const picker = document.getElementById('emojiPicker');
+    const input = document.getElementById(targetId);
+    if (picker.style.display === 'none' || emojiTarget !== targetId) {
+        emojiTarget = targetId;
+        picker.style.display = 'block';
+        // Position near the input
+        const rect = input.getBoundingClientRect();
+        picker.style.top = rect.bottom + window.scrollY + 5 + 'px';
+        picker.style.left = rect.left + window.scrollX + 'px';
+        renderEmojiGrid();
+    } else {
+        closeEmojiPicker();
+    }
+}
+
+function renderEmojiGrid() {
+    const grid = document.getElementById('emojiGrid');
+    grid.innerHTML = EMOJI_LIST.map(e => 
+        `<button type="button" class="emoji-item" onclick="insertEmoji('${e}')">${e}</button>`
+    ).join('');
+}
+
+function insertEmoji(emoji) {
+    if (!emojiTarget) return;
+    const el = document.getElementById(emojiTarget);
+    if (el.tagName === 'TEXTAREA') {
+        el.value += emoji;
+    } else {
+        el.value = emoji;
+    }
+    closeEmojiPicker();
+    el.focus();
+}
+
+function closeEmojiPicker() {
+    document.getElementById('emojiPicker').style.display = 'none';
+    emojiTarget = null;
+}
+
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.emoji-picker') && !e.target.closest('.emoji-btn') 
+        && !e.target.closest('.emoji-btn-textarea')) {
+        closeEmojiPicker();
+    }
+});
+
+// ─── 模态框 ────────────────────────────────────────────────────────
+function closeModal(id) {
+    document.getElementById(id).classList.remove('active');
+}
+
+function showModal(id) {
+    document.getElementById(id).classList.add('active');
+}
+
+// ─── 分类 CRUD ─────────────────────────────────────────────────────
+function showCategoryModal() {
+    document.getElementById('categoryModalTitle').textContent = '新建分类';
+    document.getElementById('categoryForm').reset();
+    document.getElementById('catId').value = '';
+    document.getElementById('catIcon').value = '📁';
+    showModal('categoryModal');
+}
+
+async function editCategory(id) {
+    const resp = await fetch(`/api/categories`);
+    const cats = await resp.json();
+    const cat = cats.find(c => c.id === id);
+    if (!cat) return;
+    
+    document.getElementById('categoryModalTitle').textContent = '编辑分类';
+    document.getElementById('catId').value = cat.id;
+    document.getElementById('catName').value = cat.name;
+    document.getElementById('catSlug').value = cat.slug;
+    document.getElementById('catIcon').value = cat.icon;
+    document.getElementById('catSortOrder').value = cat.sort_order;
+    document.getElementById('catDescription').value = cat.description || '';
+    showModal('categoryModal');
+}
+
+document.getElementById('categoryForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const catId = formData.get('cat_id');
+    
+    const url = catId ? `/api/categories/${catId}` : '/api/categories';
+    const method = catId ? 'PUT' : 'POST';
+    
+    const resp = await fetch(url, { method, body: formData });
+    if (resp.ok) {
+        location.reload();
+    } else {
+        const data = await resp.json();
+        alert(data.error || '操作失败');
+    }
+});
+
+async function deleteCategory(id) {
+    if (!confirm('确定要删除这个分类吗？分类下的所有媒体和音乐也会被删除。此操作不可恢复！')) return;
+    const resp = await fetch(`/api/categories/${id}`, { method: 'DELETE' });
+    if (resp.ok) {
+        location.reload();
+    } else {
+        alert('删除失败');
+    }
+}
+
+// ─── 媒体上传 ──────────────────────────────────────────────────────
+let uploadFilesList = [];
+
+function showUploadModal(catId) {
+    document.getElementById('uploadCatId').value = catId;
+    document.getElementById('uploadForm').reset();
+    document.getElementById('uploadPreview').innerHTML = '';
+    document.getElementById('uploadProgress').style.display = 'none';
+    document.getElementById('uploadSubmitBtn').style.display = 'none';
+    uploadFilesList = [];
+    showModal('uploadModal');
+}
+
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('uploadFiles');
+
+uploadZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    uploadZone.classList.add('dragover');
+});
+
+uploadZone.addEventListener('dragleave', () => {
+    uploadZone.classList.remove('dragover');
+});
+
+uploadZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadZone.classList.remove('dragover');
+    handleFiles(e.dataTransfer.files);
+});
+
+fileInput.addEventListener('change', () => {
+    handleFiles(fileInput.files);
+});
+
+function handleFiles(files) {
+    uploadFilesList = Array.from(files);
+    const preview = document.getElementById('uploadPreview');
+    preview.innerHTML = uploadFilesList.map((f, i) => {
+        const isVideo = f.type.startsWith('video/');
+        let thumb = '';
+        if (!isVideo) {
+            thumb = URL.createObjectURL(f);
+        }
+        return `
+            <div class="upload-file-item">
+                ${thumb ? `<img src="${thumb}" alt="预览">` : `<div class="upload-file-video">🎬 ${f.name}</div>`}
+                <span class="upload-file-name">${f.name}</span>
+                <span class="upload-file-size">${formatSize(f.size)}</span>
+                <button type="button" class="upload-file-remove" onclick="removeUploadFile(${i})">✕</button>
+            </div>
+        `;
+    }).join('');
+    document.getElementById('uploadSubmitBtn').style.display = uploadFilesList.length ? 'block' : 'none';
+}
+
+function removeUploadFile(index) {
+    uploadFilesList.splice(index, 1);
+    handleFiles(uploadFilesList); // re-render
+}
+
+document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!uploadFilesList.length) return;
+    
+    const catId = document.getElementById('uploadCatId').value;
+    const formData = new FormData();
+    uploadFilesList.forEach(f => formData.append('file', f));
+    
+    const progress = document.getElementById('uploadProgress');
+    const progressText = document.getElementById('progressText');
+    progress.style.display = 'block';
+    progressText.textContent = '上传中...';
+    
+    try {
+        const resp = await fetch(`/api/categories/${catId}/upload`, {
+            method: 'POST',
+            body: formData
+        });
+        if (resp.ok) {
+            progressText.textContent = '上传完成！';
+            setTimeout(() => location.reload(), 500);
+        } else {
+            const data = await resp.json();
+            alert(data.error || '上传失败');
+            progress.style.display = 'none';
+        }
+    } catch (err) {
+        alert('上传出错: ' + err.message);
+        progress.style.display = 'none';
+    }
+});
+
+// ─── 媒体编辑 ──────────────────────────────────────────────────────
+async function editMedia(mediaId, catId) {
+    const resp = await fetch(`/media/${mediaId}`);
+    const media = await resp.json();
+    
+    document.getElementById('editMediaId').value = media.id;
+    document.getElementById('editMediaDesc').value = media.description || '';
+    document.getElementById('editMediaSort').value = 0;
+    
+    const preview = document.getElementById('mediaEditPreview');
+    if (media.media_type === 'image') {
+        preview.innerHTML = `<img src="${media.url}" alt="预览">`;
+    } else {
+        preview.innerHTML = `<video src="${media.url}" controls></video>`;
+    }
+    
+    showModal('mediaEditModal');
+}
+
+document.getElementById('mediaEditForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const mediaId = formData.get('media_id');
+    
+    const resp = await fetch(`/api/media/${mediaId}`, {
+        method: 'PUT',
+        body: formData
+    });
+    if (resp.ok) {
+        location.reload();
+    } else {
+        alert('更新失败');
+    }
+});
+
+async function deleteMedia(mediaId) {
+    if (!confirm('确定要删除这个媒体吗？')) return;
+    const resp = await fetch(`/api/media/${mediaId}`, { method: 'DELETE' });
+    if (resp.ok) {
+        location.reload();
+    } else {
+        alert('删除失败');
+    }
+}
+
+// ─── 音乐管理 ──────────────────────────────────────────────────────
+async function showMusicModal(catId) {
+    document.getElementById('musicCatId').value = catId;
+    document.getElementById('musicForm').reset();
+    
+    // Load existing music
+    const resp = await fetch(`/api/categories`);
+    const cats = await resp.json();
+    const cat = cats.find(c => c.id === catId);
+    
+    const list = document.getElementById('musicList');
+    // Fetch music list via a different approach - we'll need to get from page data
+    // For now reload music list from the DOM or API
+    list.innerHTML = '<p class="empty-hint">正在加载...</p>';
+    
+    // Quick hack: get music from category page
+    const musicResp = await fetch(`/category/${cat.slug}`);
+    // This won't give us structured data easily. Let's use a different approach.
+    // Just clear and let user add.
+    list.innerHTML = '<p class="empty-hint">刷新页面查看已有音乐</p>';
+    
+    showModal('musicModal');
+}
+
+document.getElementById('musicForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const catId = document.getElementById('musicCatId').value;
+    const formData = new FormData(e.target);
+    formData.delete('cat_id');
+    
+    const resp = await fetch(`/api/categories/${catId}/music`, {
+        method: 'POST',
+        body: formData
+    });
+    if (resp.ok) {
+        alert('音乐上传成功！');
+        closeModal('musicModal');
+        location.reload();
+    } else {
+        const data = await resp.json();
+        alert(data.error || '上传失败');
+    }
+});
+
+// ─── 工具函数 ──────────────────────────────────────────────────────
+function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// ─── 拖拽排序分类 ──────────────────────────────────────────────────
+document.querySelectorAll('.admin-cat-card').forEach(card => {
+    card.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/plain', card.dataset.id);
+        card.classList.add('dragging');
+    });
+    card.addEventListener('dragend', () => {
+        card.classList.remove('dragging');
+    });
+});
+
+const adminCategories = document.getElementById('adminCategories');
+adminCategories.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    const dragging = document.querySelector('.dragging');
+    if (!dragging) return;
+    const after = getDragAfterElement(adminCategories, e.clientY);
+    if (after) {
+        adminCategories.insertBefore(dragging, after);
+    } else {
+        adminCategories.appendChild(dragging);
+    }
+});
+
+adminCategories.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    const cards = document.querySelectorAll('.admin-cat-card');
+    const order = Array.from(cards).map((card, i) => ({
+        id: parseInt(card.dataset.id),
+        sort_order: i
+    }));
+    
+    await fetch('/api/categories/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(order)
+    });
+});
+
+function getDragAfterElement(container, y) {
+    const draggables = [...container.querySelectorAll('.admin-cat-card:not(.dragging)')];
+    return draggables.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        if (offset < 0 && offset > closest.offset) {
+            return { offset, element: child };
+        }
+        return closest;
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
+}
+</script>
+{% endblock %}

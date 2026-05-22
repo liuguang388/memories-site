@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}登录 - 记忆时光{% endblock %}
+
+{% block content %}
+<div class="login-page">
+    <div class="login-card">
+        <div class="login-header">
+            <div class="login-icon">✦</div>
+            <h1>时光之门</h1>
+            <p class="login-subtitle">输入密码，进入管理中心</p>
+        </div>
+        <form method="POST" class="login-form">
+            <div class="input-group">
+                <input type="password" name="password" placeholder="请输入管理密码" required autofocus>
+                <span class="input-line"></span>
+            </div>
+            <button type="submit" class="btn-login">
+                <span class="btn-text">开启时光之门</span>
+                <span class="btn-arrow">→</span>
+            </button>
+        </form>
+        <a href="{{ url_for('index') }}" class="back-link">← 返回首页</a>
+    </div>
+</div>
+{% endblock %}
