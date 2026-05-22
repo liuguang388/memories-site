@@ -37,10 +37,6 @@ ALLOWED_MUSIC = {'mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac'}
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 
-# Ensure tables are created (especially for SQLite on first deploy)
-with app.app_context():
-    db.create_all()
-
 
 # ─── Models ──────────────────────────────────────────────────────────────────
 
@@ -81,6 +77,11 @@ class Music(db.Model):
     title = db.Column(db.String(200), default='')
     artist = db.Column(db.String(200), default='')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+# Ensure tables are created (especially for SQLite on first deploy)
+with app.app_context():
+    db.create_all()
 
 
 # ─── Auth Decorators ─────────────────────────────────────────────────────────
