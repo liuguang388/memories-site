@@ -57,12 +57,12 @@
                      onclick="editMedia({{ m.id }}, '{{ cat.id }}')">
                     {% if m.media_type == 'image' %}
                         {% if m.thumbnail %}
-                        <img src="{{ url_for('static', filename=m.thumbnail) }}" alt="预览">
+                        <img src="{{ m.thumbnail }}" alt="预览">
                         {% else %}
-                        <img src="{{ url_for('static', filename=m.filename) }}" alt="预览">
+                        <img src="{{ m.filename }}" alt="预览">
                         {% endif %}
                     {% else %}
-                        <video src="{{ url_for('static', filename=m.filename) }}" muted></video>
+                        <video src="{{ m.filename }}" muted></video>
                         <span class="ac-video-badge">▶</span>
                     {% endif %}
                     <div class="ac-media-actions">
@@ -114,6 +114,16 @@
                 <label>描述</label>
                 <textarea name="description" id="catDescription" rows="3"
                           placeholder="简短描述这个分类..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>访问密码 <span style="color:#888;font-weight:400;">（留空为公开访问）</span></label>
+                <input type="text" name="password" id="catPassword" 
+                       placeholder="设置密码后访问此分类需要输入">
+                <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:0.85rem;color:#999;cursor:pointer;">
+                    <input type="checkbox" name="remove_password" value="1" id="catRemovePw" 
+                           style="accent-color:#d4af37;">
+                    移除密码保护（公开访问）
+                </label>
             </div>
             <div class="form-group">
                 <label>封面图片</label>
@@ -313,6 +323,10 @@ function showCategoryModal() {
     document.getElementById('categoryForm').reset();
     document.getElementById('catId').value = '';
     document.getElementById('catIcon').value = '📁';
+    document.getElementById('catPassword').value = '';
+    document.getElementById('catPassword').placeholder = '设置密码后访问此分类需要输入';
+    document.getElementById('catRemovePw').checked = false;
+    document.getElementById('catRemovePw').parentElement.style.display = 'none';
     showModal('categoryModal');
 }
 
@@ -329,6 +343,19 @@ async function editCategory(id) {
     document.getElementById('catIcon').value = cat.icon;
     document.getElementById('catSortOrder').value = cat.sort_order;
     document.getElementById('catDescription').value = cat.description || '';
+    // 密码：已经设置则显示提示占位符
+    const pwInput = document.getElementById('catPassword');
+    const pwRemoveLabel = document.getElementById('catRemovePw').parentElement;
+    if (cat.has_password) {
+        pwInput.value = '';
+        pwInput.placeholder = '已设置密码（输入新密码则更新，留空保持不变）';
+        pwRemoveLabel.style.display = 'flex';
+    } else {
+        pwInput.value = '';
+        pwInput.placeholder = '设置密码后访问此分类需要输入';
+        pwRemoveLabel.style.display = 'none';
+    }
+    document.getElementById('catRemovePw').checked = false;
     showModal('categoryModal');
 }
 

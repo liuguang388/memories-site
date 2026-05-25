@@ -16,16 +16,33 @@ from werkzeug.utils import secure_filename
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from PIL import Image
+import cloudinary
+import cloudinary.uploader
+import cloudinary.api
 
 # ─── App Setup ──────────────────────────────────────────────────────────────
 
 BASE_DIR = Path(__file__).resolve().parent
+# Persistent data directory (for Render persistent disk or local dev)
+DATA_DIR = Path(os.environ.get('DATA_DIR', str(BASE_DIR)))
+
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', f'sqlite:///{BASE_DIR / "database.db"}')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
+    'DATABASE_URL',
+    f'sqlite:///{DATA_DIR / "database.db"}'
+)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max
-app.config['UPLOAD_FOLDER'] = str(BASE_DIR / 'static' / 'uploads')
+app.config['UPLOAD_FOLDER'] = str(DATA_DIR / 'uploads')
+
+# Cloudinary config (files stored in cloud, not local disk)
+cloudinary.config(
+    cloud_name=os.environ.get('CLOUDINARY_CLOUD_NAME', ''),
+    api_key=os.environ.get('CLOUDINARY_API_KEY', ''),
+    api_secret=os.environ.get('CLOUDINARY_API_SECRET', ''),
+    secure=True
+)
 
 # Admin password (change this!)
 ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'admin888')
@@ -50,6 +67,7 @@ class Category(db.Model):
     sort_order = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     cover_image = db.Column(db.String(500), default='')
+    password = db.Column(db.String(200), nullable=True, default=None)  # None=公开, 设置后需密码访问
     medias = db.relationship('Media', backref='category', lazy='dynamic',
                              cascade='all, delete-orphan', order_by='Media.sort_order.asc()')
     music = db.relationship('Music', backref='category', lazy='dynamic',
@@ -110,40 +128,30 @@ def allowed_file(filename, allowed_set):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed_set
 
 
-def save_upload(file, subfolder):
-    """Save an uploaded file and return (filename, relative_path)."""
-    ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
-    unique_name = f"{uuid.uuid4().hex}.{ext}"
-    folder = os.path.join(app.config['UPLOAD_FOLDER'], subfolder)
-    os.makedirs(folder, exist_ok=True)
-    filepath = os.path.join(folder, unique_name)
-    file.save(filepath)
-    return unique_name, f'uploads/{subfolder}/{unique_name}'
+def cloudinary_upload(file, folder='memories-site'):
+    """Upload a file to Cloudinary and return (public_id, secure_url, bytes)."""
+    result = cloudinary.uploader.upload(
+        file,
+        folder=folder,
+        resource_type='auto'
+    )
+    return result['public_id'], result['secure_url'], result.get('bytes', 0)
 
 
-def create_thumbnail(image_path, thumb_folder, size=(600, 600)):
-    """Create a thumbnail and return relative path."""
-    os.makedirs(thumb_folder, exist_ok=True)
-    filename = os.path.basename(image_path)
-    thumb_name = f"thumb_{filename}"
-    thumb_path = os.path.join(thumb_folder, thumb_name)
-    try:
-        img = Image.open(image_path)
-        img.thumbnail(size, Image.LANCZOS)
-        # Convert RGBA to RGB if necessary
-        if img.mode in ('RGBA', 'P'):
-            img = img.convert('RGB')
-        img.save(thumb_path, 'JPEG', quality=85)
-        return f'uploads/thumbnails/{thumb_name}'
-    except Exception:
+def cloudinary_thumb_url(public_id, width=600):
+    """Generate Cloudinary thumbnail URL with transformation."""
+    cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME', '')
+    if not cloud_name:
         return ''
+    return f'https://res.cloudinary.com/{cloud_name}/image/upload/w_{width},c_limit/{public_id}'
 
 
-def get_file_size(filepath):
+def cloudinary_destroy(public_id, resource_type='image'):
+    """Delete a file from Cloudinary."""
     try:
-        return os.path.getsize(filepath)
-    except OSError:
-        return 0
+        cloudinary.uploader.destroy(public_id, resource_type=resource_type)
+    except Exception:
+        pass
 
 
 # ─── Routes: Auth ────────────────────────────────────────────────────────────
@@ -178,10 +186,33 @@ def index():
 @app.route('/category/<slug>')
 def view_category(slug):
     category = Category.query.filter_by(slug=slug).first_or_404()
+    
+    # 密码保护检查：管理员跳过
+    if category.password and not session.get('is_admin'):
+        accessed_cats = session.get('category_access', {})
+        if str(category.id) not in accessed_cats:
+            return render_template('category_locked.html', category=category,
+                                   is_admin=False)
+    
     medias = category.medias.order_by(Media.sort_order.asc()).all()
     music_list = category.music.all()
     return render_template('category.html', category=category, medias=medias,
                            music_list=music_list, is_admin=session.get('is_admin', False))
+
+
+@app.route('/category/<slug>/unlock', methods=['POST'])
+def unlock_category(slug):
+    category = Category.query.filter_by(slug=slug).first_or_404()
+    password = request.form.get('password', '')
+    
+    if category.password and password == category.password:
+        accessed = session.get('category_access', {})
+        accessed[str(category.id)] = True
+        session['category_access'] = accessed
+        return redirect(url_for('view_category', slug=slug))
+    
+    flash('密码错误，请重试。', 'error')
+    return redirect(url_for('view_category', slug=slug))
 
 
 @app.route('/media/<int:media_id>')
@@ -190,8 +221,8 @@ def get_media_detail(media_id):
     return jsonify({
         'id': media.id,
         'media_type': media.media_type,
-        'url': url_for('static', filename=media.filename),
-        'thumbnail': url_for('static', filename=media.thumbnail) if media.thumbnail else '',
+        'url': media.filename,
+        'thumbnail': media.thumbnail or '',
         'description': media.description,
         'created_at': media.created_at.strftime('%Y-%m-%d %H:%M'),
         'file_size': media.file_size,
@@ -220,6 +251,7 @@ def api_categories():
         'icon': c.icon,
         'sort_order': c.sort_order,
         'cover_image': c.cover_image,
+        'has_password': bool(c.password),
         'media_count': c.medias.count(),
         'created_at': c.created_at.strftime('%Y-%m-%d %H:%M')
     } for c in categories])
@@ -245,6 +277,9 @@ def api_create_category():
     if Category.query.filter_by(slug=slug).first():
         return jsonify({'error': '该 slug 已存在'}), 400
     cat = Category(name=name, slug=slug, description=description, icon=icon)
+    pw = request.form.get('password', '').strip()
+    if pw:
+        cat.password = pw
     db.session.add(cat)
     db.session.commit()
     return jsonify({'id': cat.id, 'name': cat.name, 'slug': cat.slug, 'icon': cat.icon}), 201
@@ -264,12 +299,21 @@ def api_update_category(cat_id):
         cat.slug = slug
     cat.sort_order = int(request.form.get('sort_order', cat.sort_order))
     
+    # 密码：空字符串=保持原样，非空=更新密码
+    if 'password' in request.form:
+        pw = request.form.get('password', '').strip()
+        if pw:
+            cat.password = pw
+    # "remove_password" 复选框可清除密码
+    if request.form.get('remove_password') == '1':
+        cat.password = None
+    
     # Cover image
     if 'cover_image' in request.files:
         file = request.files['cover_image']
         if file and file.filename and allowed_file(file.filename, ALLOWED_IMAGE):
-            name, rel_path = save_upload(file, 'photos')
-            cat.cover_image = rel_path
+            _, secure_url, _ = cloudinary_upload(file, folder='memories-site/covers')
+            cat.cover_image = secure_url
     
     db.session.commit()
     return jsonify({'message': '更新成功'})
@@ -309,28 +353,21 @@ def api_upload_media(cat_id):
         
         if allowed_file(file.filename, ALLOWED_IMAGE):
             media_type = 'image'
-            subfolder = 'photos'
         elif allowed_file(file.filename, ALLOWED_VIDEO):
             media_type = 'video'
-            subfolder = 'videos'
         else:
             continue
         
-        filename, rel_path = save_upload(file, subfolder)
-        full_path = os.path.join(app.config['UPLOAD_FOLDER'], subfolder, filename)
-        file_size = get_file_size(full_path)
+        public_id, secure_url, file_size = cloudinary_upload(file)
         
-        # Create thumbnail for images
-        thumbnail = ''
-        if media_type == 'image':
-            thumb_folder = os.path.join(app.config['UPLOAD_FOLDER'], 'thumbnails')
-            thumbnail = create_thumbnail(full_path, thumb_folder)
+        # Thumbnail URL for images (Cloudinary on-the-fly transformation)
+        thumb_url = cloudinary_thumb_url(public_id) if media_type == 'image' else ''
         
         media = Media(
             category_id=cat_id,
             media_type=media_type,
-            filename=rel_path,
-            thumbnail=thumbnail,
+            filename=secure_url,       # Cloudinary URL
+            thumbnail=thumb_url,        # Cloudinary thumbnail URL (empty for videos)
             file_size=file_size,
             sort_order=sort_order
         )
@@ -339,8 +376,8 @@ def api_upload_media(cat_id):
         results.append({
             'id': media.id,
             'media_type': media_type,
-            'url': url_for('static', filename=rel_path),
-            'thumbnail': url_for('static', filename=thumbnail) if thumbnail else ''
+            'url': secure_url,
+            'thumbnail': thumb_url
         })
     
     db.session.commit()
@@ -413,13 +450,13 @@ def api_upload_music(cat_id):
     if not file.filename or not allowed_file(file.filename, ALLOWED_MUSIC):
         return jsonify({'error': '不支持的音乐格式'}), 400
     
-    filename, rel_path = save_upload(file, 'music')
-    music = Music(category_id=cat_id, filename=rel_path, title=title, artist=artist)
+    public_id, secure_url, _ = cloudinary_upload(file, folder='memories-site/music')
+    music = Music(category_id=cat_id, filename=secure_url, title=title, artist=artist)
     db.session.add(music)
     db.session.commit()
     return jsonify({
         'id': music.id,
-        'url': url_for('static', filename=rel_path),
+        'url': secure_url,
         'title': title,
         'artist': artist
     }), 201
@@ -437,25 +474,44 @@ def api_delete_music(music_id):
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
+def _extract_public_id(url):
+    """Extract Cloudinary public_id from URL."""
+    if not url or 'cloudinary.com' not in url:
+        return None
+    try:
+        # Format: .../upload/[v123/][w_600,c_limit/][folder/]public_id.ext
+        after = url.split('/upload/')[1]
+        segments = after.split('/')
+        # Filter out version (v123456) and transformation segments (w_600, c_limit etc)
+        clean = [s for s in segments 
+                 if not (s.startswith('v') and s[1:].isdigit())
+                 and ',' not in s
+                 and not any(s.startswith(p) for p in 
+                     ['w_','h_','c_','q_','f_','ar_','g_','e_','d_',
+                      'b_','p_','r_','t_','x_','y_','a_','l_','o_'])]
+        if clean:
+            return '/'.join(clean).rsplit('.', 1)[0]
+    except Exception:
+        pass
+    return None
+
+
 def _delete_media_files(media):
-    for path in [media.filename, media.thumbnail]:
-        if path:
-            full = os.path.join(app.config['UPLOAD_FOLDER'], '..', path)
-            try:
-                os.remove(full)
-            except OSError:
-                pass
+    """Delete media from Cloudinary."""
+    public_id = _extract_public_id(media.filename)
+    if public_id:
+        resource_type = 'video' if media.media_type == 'video' else 'image'
+        cloudinary_destroy(public_id, resource_type=resource_type)
 
 
 def _delete_music_file(music):
-    full = os.path.join(app.config['UPLOAD_FOLDER'], '..', music.filename)
-    try:
-        os.remove(full)
-    except OSError:
-        pass
+    """Delete music from Cloudinary."""
+    public_id = _extract_public_id(music.filename)
+    if public_id:
+        cloudinary_destroy(public_id, resource_type='video')
 
 
-# ─── Serve uploaded files ───────────────────────────────────────────────────
+# ─── Serve uploaded files (legacy local fallback) ───────────────────────────
 
 @app.route('/uploads/<subfolder>/<filename>')
 def uploaded_file(subfolder, filename):

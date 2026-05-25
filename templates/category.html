@@ -5,7 +5,7 @@
 <!-- 分类头部 -->
 <section class="category-hero"
          {% if category.cover_image %}
-         style="background-image: url('{{ url_for('static', filename=category.cover_image) }}');"
+         style="background-image: url('{{ category.cover_image }}');"
          {% endif %}>
     <div class="category-hero-overlay"></div>
     <div class="category-hero-content">
@@ -42,7 +42,7 @@
     {% if music_list|length > 1 %}
     <select class="music-playlist" id="musicPlaylist">
         {% for m in music_list %}
-        <option value="{{ url_for('static', filename=m.filename) }}"
+        <option value="{{ m.filename }}"
                 data-title="{{ m.title }}" data-artist="{{ m.artist }}"
                 {% if loop.first %}selected{% endif %}>
             {{ m.title }}{% if m.artist %} - {{ m.artist }}{% endif %}
@@ -50,7 +50,7 @@
         {% endfor %}
     </select>
     {% endif %}
-    <audio id="bgMusic" src="{{ url_for('static', filename=music_list[0].filename) }}" loop preload="auto"></audio>
+    <audio id="bgMusic" src="{{ music_list[0].filename }}" loop preload="auto"></audio>
 </div>
 {% endif %}
 
@@ -64,10 +64,10 @@
             {% if media.media_type == 'image' %}
             <div class="media-thumb" onclick="openLightbox({{ media.id }})">
                 {% if media.thumbnail %}
-                <img src="{{ url_for('static', filename=media.thumbnail) }}"
+                <img src="{{ media.thumbnail }}"
                      alt="{{ media.description|default('记忆图片') }}" loading="lazy">
                 {% else %}
-                <img src="{{ url_for('static', filename=media.filename) }}"
+                <img src="{{ media.filename }}"
                      alt="{{ media.description|default('记忆图片') }}" loading="lazy">
                 {% endif %}
                 <div class="media-overlay">
@@ -78,7 +78,7 @@
             {% else %}
             <div class="media-thumb media-thumb-video" onclick="openVideoPlayer({{ media.id }})">
                 <video preload="metadata" muted playsinline>
-                    <source src="{{ url_for('static', filename=media.filename) }}">
+                    <source src="{{ media.filename }}">
                 </video>
                 <div class="media-overlay">
                     <span class="media-play-icon">▶</span>

@@ -37,13 +37,16 @@
            style="animation-delay: {{ loop.index0 * 0.1 }}s">
             <div class="card-image">
                 {% if cat.cover_image %}
-                <img src="{{ url_for('static', filename=cat.cover_image) }}" alt="{{ cat.name }}" loading="lazy">
+                <img src="{{ cat.cover_image }}" alt="{{ cat.name }}" loading="lazy">
                 {% else %}
                 <div class="card-placeholder">
                     <span class="placeholder-icon">{{ cat.icon }}</span>
                 </div>
                 {% endif %}
                 <div class="card-image-overlay"></div>
+                {% if cat.password %}
+                <span class="card-lock-badge" title="需要密码访问">🔒</span>
+                {% endif %}
             </div>
             <div class="card-body">
                 <div class="card-icon">{{ cat.icon }}</div>

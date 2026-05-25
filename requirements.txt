@@ -4,3 +4,5 @@ flask-migrate>=4.0
 Pillow>=10.0
 gunicorn>=21.0
 werkzeug>=3.0
+cloudinary>=1.41
+psycopg2-binary>=2.9
