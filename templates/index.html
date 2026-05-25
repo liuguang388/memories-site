@@ -8,23 +8,21 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <!-- 粒子背景 -->
     <canvas id="particles-canvas"></canvas>
 
-    <!-- 顶部导航栏 -->
     <nav class="navbar" id="navbar">
         <div class="nav-container">
-            <a href="{{ url_for('index') }}" class="nav-brand">
+            <a href="/" class="nav-brand">
                 <span class="brand-icon">✦</span>
                 <span class="brand-text">记忆时光</span>
             </a>
             <div class="nav-links">
-                <a href="{{ url_for('index') }}" class="nav-link">首页</a>
+                <a href="/" class="nav-link">首页</a>
                 {% if is_admin %}
-                <a href="{{ url_for('admin') }}" class="nav-link nav-link-admin">管理中心</a>
-                <a href="{{ url_for('logout') }}" class="nav-link nav-link-logout">退出</a>
+                <a href="/admin" class="nav-link nav-link-admin">管理中心</a>
+                <a href="/logout" class="nav-link nav-link-logout">退出</a>
                 {% else %}
-                <a href="{{ url_for('login') }}" class="nav-link nav-link-login">管理员</a>
+                <a href="/login" class="nav-link nav-link-login">管理员</a>
                 {% endif %}
             </div>
             <button class="mobile-toggle" id="mobileToggle">
@@ -33,33 +31,17 @@
         </div>
     </nav>
 
-    <!-- 移动端菜单 -->
     <div class="mobile-menu" id="mobileMenu">
-        <a href="{{ url_for('index') }}">首页</a>
+        <a href="/">首页</a>
         {% if is_admin %}
-        <a href="{{ url_for('admin') }}">管理中心</a>
-        <a href="{{ url_for('logout') }}">退出</a>
+        <a href="/admin">管理中心</a>
+        <a href="/logout">退出</a>
         {% else %}
-        <a href="{{ url_for('login') }}">管理员</a>
+        <a href="/login">管理员</a>
         {% endif %}
     </div>
 
-    <!-- Flash 消息 -->
-    {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-    <div class="flash-container">
-        {% for category, message in messages %}
-        <div class="flash-message flash-{{ category }}" onclick="this.remove()">
-            {{ message }}
-        </div>
-        {% endfor %}
-    </div>
-    {% endif %}
-    {% endwith %}
-
-    <!-- 主内容 -->
     <main class="main-content">
-        <!-- 英雄区域 -->
         <section class="hero-section">
             <div class="hero-content">
                 <div class="hero-badge">✦ MEMORIES ✦</div>
@@ -76,7 +58,6 @@
             <div class="hero-overlay"></div>
         </section>
 
-        <!-- 分类卡片区域 -->
         <section class="categories-section" id="categories">
             <div class="section-header">
                 <h2 class="section-title">
@@ -86,54 +67,50 @@
                 </h2>
                 <p class="section-subtitle">每一段时光，都值得被温柔珍藏</p>
             </div>
-
-            {% if categories %}
-            <div class="categories-grid">
-                {% for cat in categories %}
-                <a href="{{ url_for('view_category', slug=cat.slug) }}" class="category-card"
-                   style="animation-delay: {{ loop.index0 * 0.1 }}s">
-                    <div class="card-image">
-                        {% if cat.cover_image %}
-                        <img src="{{ cat.cover_image }}" alt="{{ cat.name }}" loading="lazy">
-                        {% else %}
-                        <div class="card-placeholder">
-                            <span class="placeholder-icon">{{ cat.icon }}</span>
-                        </div>
-                        {% endif %}
-                        <div class="card-image-overlay"></div>
-                        {% if cat.password %}
-                        <span class="card-lock-badge" title="需要密码访问">🔒</span>
-                        {% endif %}
-                    </div>
-                    <div class="card-body">
-                        <div class="card-icon">{{ cat.icon }}</div>
-                        <h3 class="card-title">{{ cat.name }}</h3>
-                        {% if cat.description %}
-                        <p class="card-desc">{{ cat.description }}</p>
-                        {% endif %}
-                        <span class="card-count">{{ cat.medias.count() }} 份记忆</span>
-                    </div>
-                    <div class="card-shine"></div>
-                </a>
-                {% endfor %}
+            <div class="categories-grid" id="categoriesGrid">
+                <div class="empty-state">
+                    <div class="empty-icon">⏳</div>
+                    <h3>加载中...</h3>
+                </div>
             </div>
-            {% else %}
-            <div class="empty-state">
-                <div class="empty-icon">📂</div>
-                <h3>记忆长廊正在建设中</h3>
-                <p>管理员正在精心布置这片记忆空间，敬请期待...</p>
-            </div>
-            {% endif %}
         </section>
     </main>
 
-    <!-- 页脚 -->
     <footer class="site-footer">
         <div class="footer-content">
             <div class="footer-quote">岁月如歌 · 记忆如诗</div>
             <div class="footer-copy">&copy; 2026 记忆时光</div>
         </div>
     </footer>
+
+    <script>
+    // Dynamically load categories from API
+    fetch('/api/categories')
+        .then(function(res) { return res.json(); })
+        .then(function(categories) {
+            var grid = document.getElementById('categoriesGrid');
+            if (!categories || categories.length === 0) {
+                grid.innerHTML = '<div class="empty-state"><div class="empty-icon">📂</div><h3>记忆长廊正在建设中</h3><p>管理员正在精心布置这片记忆空间，敬请期待...</p></div>';
+                return;
+            }
+            grid.innerHTML = categories.map(function(cat, i) {
+                var lockBadge = cat.password ? '<span class="card-lock-badge" title="需要密码访问">🔒</span>' : '';
+                var coverHtml = cat.cover_image
+                    ? '<img src="' + cat.cover_image + '" alt="' + cat.name + '" loading="lazy">'
+                    : '<div class="card-placeholder"><span class="placeholder-icon">' + cat.icon + '</span></div>';
+                var descHtml = cat.description ? '<p class="card-desc">' + cat.description + '</p>' : '';
+                return '<a href="/category/' + cat.slug + '" class="category-card" style="animation-delay: ' + (i * 0.1) + 's">'
+                    + '<div class="card-image">' + coverHtml + '<div class="card-image-overlay"></div>' + lockBadge + '</div>'
+                    + '<div class="card-body"><div class="card-icon">' + cat.icon + '</div>'
+                    + '<h3 class="card-title">' + cat.name + '</h3>' + descHtml
+                    + '<span class="card-count">' + (cat.media_count || 0) + ' 份记忆</span></div>'
+                    + '<div class="card-shine"></div></a>';
+            }).join('');
+        })
+        .catch(function() {
+            document.getElementById('categoriesGrid').innerHTML = '<div class="empty-state"><div class="empty-icon">📂</div><h3>记忆长廊正在建设中</h3><p>管理员正在精心布置这片记忆空间，敬请期待...</p></div>';
+        });
+    </script>
 
     <script src="{{ url_for('static', filename='js/particles.js') }}"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
