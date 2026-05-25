@@ -89,8 +89,14 @@
     var musicData = [];
 
     fetch('/api/category/' + slug)
-        .then(function(res) { return res.json(); })
-        .then(function(cat) {
+        .then(function(res) { return res.json().then(function(data) { return { status: res.status, data: data }; }); })
+        .then(function(result) {
+            if (result.status === 403 && result.data.locked) {
+                // Password required — redirect to locked page
+                window.location.href = '/category/' + slug;
+                return;
+            }
+            var cat = result.data;
             document.title = cat.name + ' - 记忆时光';
             mediaData = cat.medias.map(function(m) {
                 return { id: m.id, type: m.media_type, url: m.url, thumb: m.thumbnail, description: m.description, created: m.created_at ? m.created_at.slice(0, 10) : '' };

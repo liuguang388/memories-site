@@ -55,13 +55,17 @@
                 <h1 class="locked-title">{{ category.name }}</h1>
                 <p class="locked-desc">此分类已设置访问密码，请输入密码查看内容</p>
 
-                {% if error %}
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
                 <div class="flash-messages">
-                    <div class="flash flash-error">{{ error }}</div>
+                    {% for category, message in messages %}
+                    <div class="flash flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
                 </div>
                 {% endif %}
+                {% endwith %}
 
-                <form method="POST" class="locked-form">
+                <form method="POST" action="{{ url_for('category_unlock', slug=category.slug) }}" class="locked-form">
                     <div class="locked-input-wrap">
                         <input type="password" name="password" class="locked-input"
                                placeholder="请输入访问密码" required autofocus>

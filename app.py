@@ -244,14 +244,8 @@ def admin():
 def category_page(slug):
     cat = Category.query.filter_by(slug=slug).first_or_404()
     # Check password protection
-    if cat.password:
-        if request.method == 'POST':
-            if request.form.get('password') == cat.password:
-                session[f'access_{cat.id}'] = True
-            else:
-                return render_template('category_locked.html', category=cat, error='密码错误')
-        if not session.get(f'access_{cat.id}') and not session.get('is_admin'):
-            return render_template('category_locked.html', category=cat)
+    if cat.password and not session.get(f'access_{cat.id}') and not session.get('is_admin'):
+        return render_template('category_locked.html', category=cat)
     return render_template('category.html', category=cat)
 
 
@@ -288,6 +282,9 @@ def api_get_categories():
 @app.route('/api/category/<slug>', methods=['GET'])
 def api_get_category(slug):
     cat = Category.query.filter_by(slug=slug).first_or_404()
+    # Check password protection for API access
+    if cat.password and not session.get(f'access_{cat.id}') and not session.get('is_admin'):
+        return jsonify({'error': '需要密码访问', 'locked': True, 'has_password': True}), 403
     medias = cat.medias.order_by(Media.sort_order.asc(), Media.created_at.desc()).all()
     music_list = cat.music.order_by(Music.created_at.desc()).all()
     return jsonify({
