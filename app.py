@@ -91,35 +91,40 @@ class Music(db.Model):
     __tablename__ = 'music'
     id = db.Column(db.Integer, primary_key=True)
     category_id = db.Column(db.Integer, db.ForeignKey('categories.id'), nullable=False)
-    filename = db.Column(db.String(500), nullable=False)
-    title = db.Column(db.String(200), default='')
+    title = db.Column(db.String(300), nullable=False)
     artist = db.Column(db.String(200), default='')
+    filename = db.Column(db.String(500), nullable=False)
+    file_size = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
-# Ensure tables are created (especially for SQLite on first deploy)
-with app.app_context():
-    db.create_all()
-    
-    # Validate Cloudinary configuration
-    cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME', '')
-    api_key = os.environ.get('CLOUDINARY_API_KEY', '')
-    api_secret = os.environ.get('CLOUDINARY_API_SECRET', '')
-    if cloud_name and api_key and api_secret:
-        try:
-            result = cloudinary.api.ping()
-            if result.get('status') != 'ok':
-                print(f'WARNING: Cloudinary ping failed: {result}', flush=True)
-            else:
-                print('Cloudinary connection OK', flush=True)
-        except Exception as e:
-            print(f'WARNING: Cloudinary config error: {e}', flush=True)
-    else:
-        missing = []
-        if not cloud_name: missing.append('CLOUDINARY_CLOUD_NAME')
-        if not api_key: missing.append('CLOUDINARY_API_KEY')
-        if not api_secret: missing.append('CLOUDINARY_API_SECRET')
-        print(f'WARNING: Missing Cloudinary env vars: {", ".join(missing)}', flush=True)
+# Create tables safely - don't crash on DB errors
+try:
+    with app.app_context():
+        db.create_all()
+        print("Database tables ready", flush=True)
+except Exception as e:
+    print(f"WARNING: Database setup error (tables may already exist): {e}", flush=True)
+
+# Validate Cloudinary configuration
+_cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME', '')
+_api_key = os.environ.get('CLOUDINARY_API_KEY', '')
+_api_secret = os.environ.get('CLOUDINARY_API_SECRET', '')
+if _cloud_name and _api_key and _api_secret:
+    try:
+        result = cloudinary.api.ping()
+        if result.get('status') == 'ok':
+            print(f'Cloudinary OK (cloud: {_cloud_name})', flush=True)
+        else:
+            print(f'WARNING: Cloudinary ping unexpected: {result}', flush=True)
+    except Exception as e:
+        print(f'WARNING: Cloudinary config error: {e}', flush=True)
+else:
+    missing = []
+    if not _cloud_name: missing.append('CLOUDINARY_CLOUD_NAME')
+    if not _api_key: missing.append('CLOUDINARY_API_KEY')
+    if not _api_secret: missing.append('CLOUDINARY_API_SECRET')
+    print(f'WARNING: Missing Cloudinary env vars: {", ".join(missing)}', flush=True)
 
 
 # ─── Auth Decorators ─────────────────────────────────────────────────────────
@@ -154,10 +159,7 @@ class CloudinaryUploadError(Exception):
 
 
 def cloudinary_upload(file, folder='memories-site'):
-    """Upload a file to Cloudinary and return (public_id, secure_url, bytes).
-    
-    Raises CloudinaryUploadError with a user-friendly message on failure.
-    """
+    """Upload a file to Cloudinary. Returns (public_id, secure_url, bytes)."""
     try:
         result = cloudinary.uploader.upload(
             file,
@@ -167,7 +169,6 @@ def cloudinary_upload(file, folder='memories-site'):
         return result['public_id'], result['secure_url'], result.get('bytes', 0)
     except Exception as e:
         msg = str(e)
-        # Map common Cloudinary errors to friendly messages
         if 'invalid' in msg.lower() or 'api key' in msg.lower() or 'auth' in msg.lower():
             raise CloudinaryUploadError('Cloudinary 认证失败，请检查 API 密钥配置')
         elif 'size' in msg.lower() or 'too large' in msg.lower():
@@ -175,7 +176,7 @@ def cloudinary_upload(file, folder='memories-site'):
         elif 'format' in msg.lower() or 'not supported' in msg.lower():
             raise CloudinaryUploadError('不支持的文件格式')
         elif 'timeout' in msg.lower() or 'connection' in msg.lower():
-            raise CloudinaryUploadError('上传超时，请重试（免费方案可能有网络波动）')
+            raise CloudinaryUploadError('上传超时，请重试')
         else:
             raise CloudinaryUploadError(f'上传失败: {msg}')
 
@@ -193,86 +194,34 @@ def cloudinary_destroy(public_id, resource_type='image'):
     try:
         cloudinary.uploader.destroy(public_id, resource_type=resource_type)
     except Exception:
-        pass
+        pass  # silent fail - file might be already deleted
 
 
-# ─── Routes: Auth ────────────────────────────────────────────────────────────
+# ─── Page Routes ─────────────────────────────────────────────────────────────
+
+@app.route('/')
+def index():
+    categories = Category.query.order_by(Category.sort_order.asc()).all()
+    return render_template('index.html', categories=categories)
+
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        password = request.form.get('password', '')
-        if password == ADMIN_PASSWORD:
+        if request.form.get('password') == ADMIN_PASSWORD:
             session['is_admin'] = True
-            session.permanent = True
-            flash('欢迎回来，时光守护者。', 'success')
+            flash('登录成功', 'success')
             return redirect(url_for('admin'))
-        flash('密码错误，请重试。', 'error')
+        flash('密码错误', 'error')
     return render_template('login.html')
 
 
 @app.route('/logout')
 def logout():
-    session.pop('is_admin', None)
+    session.clear()
+    flash('已退出登录', 'info')
     return redirect(url_for('index'))
 
-
-# ─── Routes: Visitor View ───────────────────────────────────────────────────
-
-@app.route('/')
-def index():
-    categories = Category.query.order_by(Category.sort_order.asc()).all()
-    return render_template('index.html', categories=categories, is_admin=session.get('is_admin', False))
-
-
-@app.route('/category/<slug>')
-def view_category(slug):
-    category = Category.query.filter_by(slug=slug).first_or_404()
-    
-    # 密码保护检查：管理员跳过
-    if category.password and not session.get('is_admin'):
-        accessed_cats = session.get('category_access', {})
-        if str(category.id) not in accessed_cats:
-            return render_template('category_locked.html', category=category,
-                                   is_admin=False)
-    
-    medias = category.medias.order_by(Media.sort_order.asc()).all()
-    music_list = category.music.all()
-    return render_template('category.html', category=category, medias=medias,
-                           music_list=music_list, is_admin=session.get('is_admin', False))
-
-
-@app.route('/category/<slug>/unlock', methods=['POST'])
-def unlock_category(slug):
-    category = Category.query.filter_by(slug=slug).first_or_404()
-    password = request.form.get('password', '')
-    
-    if category.password and password == category.password:
-        accessed = session.get('category_access', {})
-        accessed[str(category.id)] = True
-        session['category_access'] = accessed
-        return redirect(url_for('view_category', slug=slug))
-    
-    flash('密码错误，请重试。', 'error')
-    return redirect(url_for('view_category', slug=slug))
-
-
-@app.route('/media/<int:media_id>')
-def get_media_detail(media_id):
-    media = Media.query.get_or_404(media_id)
-    return jsonify({
-        'id': media.id,
-        'media_type': media.media_type,
-        'url': media.filename,
-        'thumbnail': media.thumbnail or '',
-        'description': media.description,
-        'created_at': media.created_at.strftime('%Y-%m-%d %H:%M'),
-        'file_size': media.file_size,
-        'category_name': media.category.name
-    })
-
-
-# ─── Routes: Admin ──────────────────────────────────────────────────────────
 
 @app.route('/admin')
 @login_required
@@ -281,9 +230,39 @@ def admin():
     return render_template('admin.html', categories=categories)
 
 
+@app.route('/category/<slug>')
+def category_page(slug):
+    cat = Category.query.filter_by(slug=slug).first_or_404()
+    # Check password protection
+    if cat.password:
+        if request.method == 'POST':
+            if request.form.get('password') == cat.password:
+                session[f'access_{cat.id}'] = True
+            else:
+                flash('密码错误', 'error')
+                return render_template('category_locked.html', category=cat)
+        if not session.get(f'access_{cat.id}') and not session.get('is_admin'):
+            return render_template('category_locked.html', category=cat)
+    medias = cat.medias.all()
+    music_list = cat.music.all()
+    return render_template('category.html', category=cat, medias=medias, music_list=music_list)
+
+
+@app.route('/category/<slug>/unlock', methods=['POST'])
+def category_unlock(slug):
+    cat = Category.query.filter_by(slug=slug).first_or_404()
+    if request.form.get('password') == cat.password:
+        session[f'access_{cat.id}'] = True
+        return redirect(url_for('category_page', slug=slug))
+    flash('密码错误', 'error')
+    return redirect(url_for('category_page', slug=slug))
+
+
+# ─── API Routes ──────────────────────────────────────────────────────────────
+
 @app.route('/api/categories', methods=['GET'])
 @api_login_required
-def api_categories():
+def api_get_categories():
     categories = Category.query.order_by(Category.sort_order.asc()).all()
     return jsonify([{
         'id': c.id,
@@ -293,73 +272,78 @@ def api_categories():
         'icon': c.icon,
         'sort_order': c.sort_order,
         'cover_image': c.cover_image,
-        'has_password': bool(c.password),
+        'password': c.password,
         'media_count': c.medias.count(),
-        'created_at': c.created_at.strftime('%Y-%m-%d %H:%M')
+        'music_count': c.music.count(),
+        'created_at': c.created_at.isoformat() if c.created_at else None
     } for c in categories])
 
 
 @app.route('/api/categories', methods=['POST'])
 @api_login_required
 def api_create_category():
-    name = request.form.get('name', '').strip()
-    description = request.form.get('description', '').strip()
-    icon = request.form.get('icon', '📁').strip()
-    if not name:
+    data = request.json
+    if not data or not data.get('name'):
         return jsonify({'error': '分类名称不能为空'}), 400
-    slug = request.form.get('slug', '').strip()
-    if not slug:
-        # Generate slug from name (simple pinyin-like approach)
-        import re
-        slug = re.sub(r'[^\w\s-]', '', name).strip().lower()
-        slug = re.sub(r'[-\s]+', '-', slug)
-        if not slug:
-            slug = uuid.uuid4().hex[:8]
-    # Check uniqueness
-    if Category.query.filter_by(slug=slug).first():
-        return jsonify({'error': '该 slug 已存在'}), 400
-    cat = Category(name=name, slug=slug, description=description, icon=icon)
-    pw = request.form.get('password', '').strip()
-    if pw:
-        cat.password = pw
+    slug = data.get('slug') or data['name'].lower().replace(' ', '-')
+    # Ensure unique slug
+    base_slug = slug
+    counter = 1
+    while Category.query.filter_by(slug=slug).first():
+        slug = f"{base_slug}-{counter}"
+        counter += 1
+    cat = Category(
+        name=data['name'],
+        slug=slug,
+        description=data.get('description', ''),
+        icon=data.get('icon', '📁'),
+        sort_order=data.get('sort_order', 0),
+        password=data.get('password') or None
+    )
     db.session.add(cat)
     db.session.commit()
-    return jsonify({'id': cat.id, 'name': cat.name, 'slug': cat.slug, 'icon': cat.icon}), 201
+    return jsonify({'id': cat.id, 'slug': cat.slug}), 201
 
 
 @app.route('/api/categories/<int:cat_id>', methods=['PUT'])
 @api_login_required
 def api_update_category(cat_id):
     cat = Category.query.get_or_404(cat_id)
-    cat.name = request.form.get('name', cat.name).strip()
-    cat.description = request.form.get('description', cat.description).strip()
-    cat.icon = request.form.get('icon', cat.icon).strip()
-    slug = request.form.get('slug', '').strip()
-    if slug and slug != cat.slug:
-        if Category.query.filter_by(slug=slug).first():
-            return jsonify({'error': '该 slug 已存在'}), 400
-        cat.slug = slug
-    cat.sort_order = int(request.form.get('sort_order', cat.sort_order))
-    
-    # 密码：空字符串=保持原样，非空=更新密码
-    if 'password' in request.form:
-        pw = request.form.get('password', '').strip()
-        if pw:
-            cat.password = pw
-    # "remove_password" 复选框可清除密码
-    if request.form.get('remove_password') == '1':
-        cat.password = None
-    
-    # Cover image
-    if 'cover_image' in request.files:
-        file = request.files['cover_image']
-        if file and file.filename and allowed_file(file.filename, ALLOWED_IMAGE):
-            try:
-                _, secure_url, _ = cloudinary_upload(file, folder='memories-site/covers')
-                cat.cover_image = secure_url
-            except CloudinaryUploadError as e:
-                return jsonify({'error': str(e)}), 400
-    
+    data = request.json
+    if not data:
+        return jsonify({'error': 'No data'}), 400
+
+    if 'name' in data:
+        cat.name = data['name']
+    if 'description' in data:
+        cat.description = data['description']
+    if 'icon' in data:
+        cat.icon = data['icon']
+    if 'sort_order' in data:
+        cat.sort_order = data['sort_order']
+    if 'password' in data:
+        cat.password = data['password'] or None
+
+    # Handle cover image upload
+    cover_file = request.files.get('cover_image')
+    if cover_file and cover_file.filename:
+        if not allowed_file(cover_file.filename, ALLOWED_IMAGE):
+            return jsonify({'error': '不支持的图片格式'}), 400
+        try:
+            public_id, secure_url, _ = cloudinary_upload(cover_file, folder='memories-site/covers')
+            # Delete old cover if exists
+            if cat.cover_image:
+                try:
+                    old_id = cat.cover_image.split('/')[-1].split('.')[0]
+                    cloudinary_destroy(f'memories-site/covers/{old_id}')
+                except Exception:
+                    pass
+            cat.cover_image = secure_url
+        except CloudinaryUploadError as e:
+            return jsonify({'error': str(e)}), 400
+        except Exception as e:
+            return jsonify({'error': f'封面上传失败: {str(e)}'}), 500
+
     db.session.commit()
     return jsonify({'message': '更新成功'})
 
@@ -368,11 +352,17 @@ def api_update_category(cat_id):
 @api_login_required
 def api_delete_category(cat_id):
     cat = Category.query.get_or_404(cat_id)
-    # Delete associated files
-    for m in cat.medias.all():
-        _delete_media_files(m)
-    for mu in cat.music.all():
-        _delete_music_file(mu)
+    # Delete all associated Cloudinary files
+    for media in cat.medias.all():
+        try:
+            cloudinary_destroy(media.filename, media.media_type)
+        except Exception:
+            pass
+    for music in cat.music.all():
+        try:
+            cloudinary_destroy(music.filename, 'raw')
+        except Exception:
+            pass
     db.session.delete(cat)
     db.session.commit()
     return jsonify({'message': '删除成功'})
@@ -382,66 +372,65 @@ def api_delete_category(cat_id):
 @api_login_required
 def api_upload_media(cat_id):
     cat = Category.query.get_or_404(cat_id)
-    if 'file' not in request.files:
+    file = request.files.get('file')
+    if not file or not file.filename:
         return jsonify({'error': '没有选择文件'}), 400
-    
-    files = request.files.getlist('file')
-    if not files:
-        return jsonify({'error': '没有选择文件'}), 400
-    
-    results = []
-    sort_order = cat.medias.count()
-    
+
+    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
+    if ext in ALLOWED_IMAGE:
+        media_type = 'image'
+    elif ext in ALLOWED_VIDEO:
+        media_type = 'video'
+    else:
+        return jsonify({'error': f'不支持的文件格式: .{ext}'}), 400
+
     try:
-        for file in files:
-            if not file.filename:
-                continue
-            
-            if allowed_file(file.filename, ALLOWED_IMAGE):
-                media_type = 'image'
-            elif allowed_file(file.filename, ALLOWED_VIDEO):
-                media_type = 'video'
-            else:
-                continue
-            
-            public_id, secure_url, file_size = cloudinary_upload(file)
-            
-            # Thumbnail URL for images (Cloudinary on-the-fly transformation)
-            thumb_url = cloudinary_thumb_url(public_id) if media_type == 'image' else ''
-            
-            media = Media(
-                category_id=cat_id,
-                media_type=media_type,
-                filename=secure_url,       # Cloudinary URL
-                thumbnail=thumb_url,        # Cloudinary thumbnail URL (empty for videos)
-                file_size=file_size,
-                sort_order=sort_order
-            )
-            db.session.add(media)
-            sort_order += 1
-            results.append({
-                'id': media.id,
-                'media_type': media_type,
-                'url': secure_url,
-                'thumbnail': thumb_url
-            })
-        
-        db.session.commit()
-        return jsonify({'message': f'成功上传 {len(results)} 个文件', 'items': results}), 201
+        public_id, secure_url, file_size = cloudinary_upload(file)
     except CloudinaryUploadError as e:
-        db.session.rollback()
         return jsonify({'error': str(e)}), 400
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': f'服务器内部错误: {str(e)}'}), 500
+        return jsonify({'error': f'上传失败: {str(e)}'}), 500
+
+    thumb_url = ''
+    if media_type == 'image':
+        thumb_url = cloudinary_thumb_url(public_id)
+    elif media_type == 'video':
+        # Video thumbnail from Cloudinary
+        cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME', '')
+        if cloud_name:
+            thumb_url = f'https://res.cloudinary.com/{cloud_name}/video/upload/so_0,w_600/{public_id}.jpg'
+
+    media = Media(
+        category_id=cat_id,
+        media_type=media_type,
+        filename=public_id,
+        thumbnail=thumb_url,
+        description='',
+        file_size=file_size,
+        sort_order=cat.medias.count()
+    )
+    db.session.add(media)
+    db.session.commit()
+    return jsonify({
+        'id': media.id,
+        'media_type': media_type,
+        'secure_url': secure_url,
+        'thumbnail': thumb_url,
+        'file_size': file_size
+    })
 
 
 @app.route('/api/media/<int:media_id>', methods=['PUT'])
 @api_login_required
 def api_update_media(media_id):
     media = Media.query.get_or_404(media_id)
-    media.description = request.form.get('description', media.description)
-    media.sort_order = int(request.form.get('sort_order', media.sort_order))
+    data = request.json
+    if data:
+        if 'description' in data:
+            media.description = data['description']
+        if 'sort_order' in data:
+            media.sort_order = data['sort_order']
     db.session.commit()
     return jsonify({'message': '更新成功'})
 
@@ -450,131 +439,81 @@ def api_update_media(media_id):
 @api_login_required
 def api_delete_media(media_id):
     media = Media.query.get_or_404(media_id)
-    _delete_media_files(media)
+    try:
+        cloudinary_destroy(media.filename, media.media_type)
+    except Exception:
+        pass
     db.session.delete(media)
     db.session.commit()
     return jsonify({'message': '删除成功'})
 
 
-@app.route('/api/categories/reorder', methods=['POST'])
-@api_login_required
-def api_reorder_categories():
-    """Reorder categories based on array of {id, sort_order}."""
-    data = request.get_json()
-    if not data:
-        return jsonify({'error': '无效数据'}), 400
-    for item in data:
-        cat = Category.query.get(item['id'])
-        if cat:
-            cat.sort_order = item['sort_order']
-    db.session.commit()
-    return jsonify({'message': '排序更新成功'})
-
-
-@app.route('/api/media/reorder', methods=['POST'])
-@api_login_required
-def api_reorder_media():
-    """Reorder media items based on array of {id, sort_order}."""
-    data = request.get_json()
-    if not data:
-        return jsonify({'error': '无效数据'}), 400
-    for item in data:
-        media = Media.query.get(item['id'])
-        if media:
-            media.sort_order = item['sort_order']
-    db.session.commit()
-    return jsonify({'message': '排序更新成功'})
-
-
-# ─── Routes: Music ───────────────────────────────────────────────────────────
-
 @app.route('/api/categories/<int:cat_id>/music', methods=['POST'])
 @api_login_required
 def api_upload_music(cat_id):
     cat = Category.query.get_or_404(cat_id)
-    if 'file' not in request.files:
+    file = request.files.get('file')
+    if not file or not file.filename:
         return jsonify({'error': '没有选择文件'}), 400
-    
-    file = request.files['file']
+
+    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
+    if ext not in ALLOWED_MUSIC:
+        return jsonify({'error': f'不支持的音频格式: .{ext}'}), 400
+
     title = request.form.get('title', file.filename.rsplit('.', 1)[0])
     artist = request.form.get('artist', '')
-    
-    if not file.filename or not allowed_file(file.filename, ALLOWED_MUSIC):
-        return jsonify({'error': '不支持的音乐格式'}), 400
-    
+
     try:
-        public_id, secure_url, _ = cloudinary_upload(file, folder='memories-site/music')
-        music = Music(category_id=cat_id, filename=secure_url, title=title, artist=artist)
-        db.session.add(music)
-        db.session.commit()
-        return jsonify({
-            'id': music.id,
-            'url': secure_url,
-            'title': title,
-            'artist': artist
-        }), 201
+        public_id, secure_url, file_size = cloudinary_upload(file, folder='memories-site/music')
     except CloudinaryUploadError as e:
         return jsonify({'error': str(e)}), 400
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': f'服务器内部错误: {str(e)}'}), 500
+        return jsonify({'error': f'上传失败: {str(e)}'}), 500
+
+    music = Music(
+        category_id=cat_id,
+        title=title,
+        artist=artist,
+        filename=public_id,
+        file_size=file_size
+    )
+    db.session.add(music)
+    db.session.commit()
+    return jsonify({
+        'id': music.id,
+        'title': title,
+        'artist': artist,
+        'secure_url': secure_url,
+        'file_size': file_size
+    })
+
+
+@app.route('/api/music/<int:music_id>', methods=['PUT'])
+@api_login_required
+def api_update_music(music_id):
+    music = Music.query.get_or_404(music_id)
+    data = request.json
+    if data:
+        if 'title' in data:
+            music.title = data['title']
+        if 'artist' in data:
+            music.artist = data['artist']
+    db.session.commit()
+    return jsonify({'message': '更新成功'})
 
 
 @app.route('/api/music/<int:music_id>', methods=['DELETE'])
 @api_login_required
 def api_delete_music(music_id):
     music = Music.query.get_or_404(music_id)
-    _delete_music_file(music)
+    try:
+        cloudinary_destroy(music.filename, 'raw')
+    except Exception:
+        pass
     db.session.delete(music)
     db.session.commit()
     return jsonify({'message': '删除成功'})
-
-
-# ─── Helpers ─────────────────────────────────────────────────────────────────
-
-def _extract_public_id(url):
-    """Extract Cloudinary public_id from URL."""
-    if not url or 'cloudinary.com' not in url:
-        return None
-    try:
-        # Format: .../upload/[v123/][w_600,c_limit/][folder/]public_id.ext
-        after = url.split('/upload/')[1]
-        segments = after.split('/')
-        # Filter out version (v123456) and transformation segments (w_600, c_limit etc)
-        clean = [s for s in segments 
-                 if not (s.startswith('v') and s[1:].isdigit())
-                 and ',' not in s
-                 and not any(s.startswith(p) for p in 
-                     ['w_','h_','c_','q_','f_','ar_','g_','e_','d_',
-                      'b_','p_','r_','t_','x_','y_','a_','l_','o_'])]
-        if clean:
-            return '/'.join(clean).rsplit('.', 1)[0]
-    except Exception:
-        pass
-    return None
-
-
-def _delete_media_files(media):
-    """Delete media from Cloudinary."""
-    public_id = _extract_public_id(media.filename)
-    if public_id:
-        resource_type = 'video' if media.media_type == 'video' else 'image'
-        cloudinary_destroy(public_id, resource_type=resource_type)
-
-
-def _delete_music_file(music):
-    """Delete music from Cloudinary."""
-    public_id = _extract_public_id(music.filename)
-    if public_id:
-        cloudinary_destroy(public_id, resource_type='video')
-
-
-# ─── Serve uploaded files (legacy local fallback) ───────────────────────────
-
-@app.route('/uploads/<subfolder>/<filename>')
-def uploaded_file(subfolder, filename):
-    directory = os.path.join(app.config['UPLOAD_FOLDER'], subfolder)
-    return send_from_directory(directory, filename)
 
 
 # ─── Error Handlers ──────────────────────────────────────────────────────────
@@ -583,7 +522,7 @@ def uploaded_file(subfolder, filename):
 def not_found_error(e):
     if request.path.startswith('/api/'):
         return jsonify({'error': 'Not found'}), 404
-    return render_template('base.html'), 404
+    return render_template('base.html', error='页面未找到'), 404
 
 
 @app.errorhandler(500)
@@ -591,22 +530,10 @@ def internal_error(e):
     db.session.rollback()
     if request.path.startswith('/api/'):
         return jsonify({'error': f'服务器内部错误: {str(e)}'}), 500
-    return render_template('base.html'), 500
-
-
-@app.errorhandler(Exception)
-def handle_unhandled(e):
-    db.session.rollback()
-    if request.path.startswith('/api/'):
-        return jsonify({'error': f'服务器内部错误: {str(e)}'}), 500
-    # Re-raise for non-API routes so Flask can handle normally
-    raise e
+    return render_template('base.html', error='服务器内部错误'), 500
 
 
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=False)
