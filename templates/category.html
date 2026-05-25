@@ -93,7 +93,7 @@
         .then(function(cat) {
             document.title = cat.name + ' - 记忆时光';
             mediaData = cat.medias.map(function(m) {
-                return { id: m.id, type: m.media_type, url: m.filename, description: m.description, created: m.created_at ? m.created_at.slice(0, 10) : '' };
+                return { id: m.id, type: m.media_type, url: m.url, thumb: m.thumbnail, description: m.description, created: m.created_at ? m.created_at.slice(0, 10) : '' };
             });
             musicData = cat.music || [];
             renderCategory(cat);
@@ -129,12 +129,12 @@
             if (musicData.length > 1) {
                 html += '<select class="music-playlist" id="musicPlaylist">';
                 musicData.forEach(function(m, i) {
-                    html += '<option value="' + m.filename + '" data-title="' + m.title + '" data-artist="' + (m.artist||'') + '"' + (i===0?' selected':'') + '>'
+                    html += '<option value="' + m.url + '" data-title="' + m.title + '" data-artist="' + (m.artist||'') + '"' + (i===0?' selected':'') + '>'
                         + m.title + (m.artist ? ' - ' + m.artist : '') + '</option>';
                 });
                 html += '</select>';
             }
-            html += '<audio id="bgMusic" src="' + musicData[0].filename + '" loop preload="auto"></audio></div>';
+            html += '<audio id="bgMusic" src="' + musicData[0].url + '" loop preload="auto"></audio></div>';
         }
 
         // Media section
@@ -145,7 +145,7 @@
                 html += '<div class="media-item" data-id="' + m.id + '" style="animation-delay:' + (i*0.05) + 's">';
                 if (m.type === 'image') {
                     html += '<div class="media-thumb" onclick="openLightbox(' + m.id + ')">'
-                        + '<img src="' + m.url + '" alt="' + (m.description||'记忆图片') + '" loading="lazy">'
+                        + '<img src="' + m.thumb + '" alt="' + (m.description||'记忆图片') + '" loading="lazy">'
                         + '<div class="media-overlay"><span class="media-zoom">🔍</span></div>'
                         + '<span class="media-badge media-badge-image">📷</span></div>';
                 } else {

@@ -108,6 +108,16 @@ except Exception as e:
 
 # Validate Cloudinary configuration
 _cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME', '')
+
+def cloudinary_url(filename, media_type='image'):
+    """Build full Cloudinary URL from public_id."""
+    if not filename:
+        return ''
+    if filename.startswith('http'):
+        return filename
+    # Map media_type to Cloudinary resource type
+    resource_type = 'video' if media_type in ('video', 'audio') else 'image'
+    return f'https://res.cloudinary.com/{_cloud_name}/{resource_type}/upload/{filename}'
 _api_key = os.environ.get('CLOUDINARY_API_KEY', '')
 _api_secret = os.environ.get('CLOUDINARY_API_SECRET', '')
 if _cloud_name and _api_key and _api_secret:
@@ -294,6 +304,7 @@ def api_get_category(slug):
             'media_type': m.media_type,
             'filename': m.filename,
             'thumbnail': m.thumbnail,
+            'url': cloudinary_url(m.filename, m.media_type),
             'description': m.description or '',
             'created_at': m.created_at.isoformat() if m.created_at else None
         } for m in medias],
@@ -301,7 +312,8 @@ def api_get_category(slug):
             'id': m.id,
             'title': m.title,
             'artist': m.artist,
-            'filename': m.filename
+            'filename': m.filename,
+            'url': cloudinary_url(m.filename, 'audio')
         } for m in music_list]
     })
 
