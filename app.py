@@ -100,6 +100,26 @@ class Music(db.Model):
 # Ensure tables are created (especially for SQLite on first deploy)
 with app.app_context():
     db.create_all()
+    
+    # Validate Cloudinary configuration
+    cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME', '')
+    api_key = os.environ.get('CLOUDINARY_API_KEY', '')
+    api_secret = os.environ.get('CLOUDINARY_API_SECRET', '')
+    if cloud_name and api_key and api_secret:
+        try:
+            result = cloudinary.api.ping()
+            if result.get('status') != 'ok':
+                print(f'WARNING: Cloudinary ping failed: {result}', flush=True)
+            else:
+                print('Cloudinary connection OK', flush=True)
+        except Exception as e:
+            print(f'WARNING: Cloudinary config error: {e}', flush=True)
+    else:
+        missing = []
+        if not cloud_name: missing.append('CLOUDINARY_CLOUD_NAME')
+        if not api_key: missing.append('CLOUDINARY_API_KEY')
+        if not api_secret: missing.append('CLOUDINARY_API_SECRET')
+        print(f'WARNING: Missing Cloudinary env vars: {", ".join(missing)}', flush=True)
 
 
 # ─── Auth Decorators ─────────────────────────────────────────────────────────
@@ -128,14 +148,36 @@ def allowed_file(filename, allowed_set):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed_set
 
 
+class CloudinaryUploadError(Exception):
+    """Raised when Cloudinary upload fails."""
+    pass
+
+
 def cloudinary_upload(file, folder='memories-site'):
-    """Upload a file to Cloudinary and return (public_id, secure_url, bytes)."""
-    result = cloudinary.uploader.upload(
-        file,
-        folder=folder,
-        resource_type='auto'
-    )
-    return result['public_id'], result['secure_url'], result.get('bytes', 0)
+    """Upload a file to Cloudinary and return (public_id, secure_url, bytes).
+    
+    Raises CloudinaryUploadError with a user-friendly message on failure.
+    """
+    try:
+        result = cloudinary.uploader.upload(
+            file,
+            folder=folder,
+            resource_type='auto'
+        )
+        return result['public_id'], result['secure_url'], result.get('bytes', 0)
+    except Exception as e:
+        msg = str(e)
+        # Map common Cloudinary errors to friendly messages
+        if 'invalid' in msg.lower() or 'api key' in msg.lower() or 'auth' in msg.lower():
+            raise CloudinaryUploadError('Cloudinary 认证失败，请检查 API 密钥配置')
+        elif 'size' in msg.lower() or 'too large' in msg.lower():
+            raise CloudinaryUploadError('文件大小超出 Cloudinary 免费额度限制（最大 10MB）')
+        elif 'format' in msg.lower() or 'not supported' in msg.lower():
+            raise CloudinaryUploadError('不支持的文件格式')
+        elif 'timeout' in msg.lower() or 'connection' in msg.lower():
+            raise CloudinaryUploadError('上传超时，请重试（免费方案可能有网络波动）')
+        else:
+            raise CloudinaryUploadError(f'上传失败: {msg}')
 
 
 def cloudinary_thumb_url(public_id, width=600):
@@ -312,8 +354,11 @@ def api_update_category(cat_id):
     if 'cover_image' in request.files:
         file = request.files['cover_image']
         if file and file.filename and allowed_file(file.filename, ALLOWED_IMAGE):
-            _, secure_url, _ = cloudinary_upload(file, folder='memories-site/covers')
-            cat.cover_image = secure_url
+            try:
+                _, secure_url, _ = cloudinary_upload(file, folder='memories-site/covers')
+                cat.cover_image = secure_url
+            except CloudinaryUploadError as e:
+                return jsonify({'error': str(e)}), 400
     
     db.session.commit()
     return jsonify({'message': '更新成功'})
@@ -347,41 +392,48 @@ def api_upload_media(cat_id):
     results = []
     sort_order = cat.medias.count()
     
-    for file in files:
-        if not file.filename:
-            continue
+    try:
+        for file in files:
+            if not file.filename:
+                continue
+            
+            if allowed_file(file.filename, ALLOWED_IMAGE):
+                media_type = 'image'
+            elif allowed_file(file.filename, ALLOWED_VIDEO):
+                media_type = 'video'
+            else:
+                continue
+            
+            public_id, secure_url, file_size = cloudinary_upload(file)
+            
+            # Thumbnail URL for images (Cloudinary on-the-fly transformation)
+            thumb_url = cloudinary_thumb_url(public_id) if media_type == 'image' else ''
+            
+            media = Media(
+                category_id=cat_id,
+                media_type=media_type,
+                filename=secure_url,       # Cloudinary URL
+                thumbnail=thumb_url,        # Cloudinary thumbnail URL (empty for videos)
+                file_size=file_size,
+                sort_order=sort_order
+            )
+            db.session.add(media)
+            sort_order += 1
+            results.append({
+                'id': media.id,
+                'media_type': media_type,
+                'url': secure_url,
+                'thumbnail': thumb_url
+            })
         
-        if allowed_file(file.filename, ALLOWED_IMAGE):
-            media_type = 'image'
-        elif allowed_file(file.filename, ALLOWED_VIDEO):
-            media_type = 'video'
-        else:
-            continue
-        
-        public_id, secure_url, file_size = cloudinary_upload(file)
-        
-        # Thumbnail URL for images (Cloudinary on-the-fly transformation)
-        thumb_url = cloudinary_thumb_url(public_id) if media_type == 'image' else ''
-        
-        media = Media(
-            category_id=cat_id,
-            media_type=media_type,
-            filename=secure_url,       # Cloudinary URL
-            thumbnail=thumb_url,        # Cloudinary thumbnail URL (empty for videos)
-            file_size=file_size,
-            sort_order=sort_order
-        )
-        db.session.add(media)
-        sort_order += 1
-        results.append({
-            'id': media.id,
-            'media_type': media_type,
-            'url': secure_url,
-            'thumbnail': thumb_url
-        })
-    
-    db.session.commit()
-    return jsonify({'message': f'成功上传 {len(results)} 个文件', 'items': results}), 201
+        db.session.commit()
+        return jsonify({'message': f'成功上传 {len(results)} 个文件', 'items': results}), 201
+    except CloudinaryUploadError as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'服务器内部错误: {str(e)}'}), 500
 
 
 @app.route('/api/media/<int:media_id>', methods=['PUT'])
@@ -450,16 +502,22 @@ def api_upload_music(cat_id):
     if not file.filename or not allowed_file(file.filename, ALLOWED_MUSIC):
         return jsonify({'error': '不支持的音乐格式'}), 400
     
-    public_id, secure_url, _ = cloudinary_upload(file, folder='memories-site/music')
-    music = Music(category_id=cat_id, filename=secure_url, title=title, artist=artist)
-    db.session.add(music)
-    db.session.commit()
-    return jsonify({
-        'id': music.id,
-        'url': secure_url,
-        'title': title,
-        'artist': artist
-    }), 201
+    try:
+        public_id, secure_url, _ = cloudinary_upload(file, folder='memories-site/music')
+        music = Music(category_id=cat_id, filename=secure_url, title=title, artist=artist)
+        db.session.add(music)
+        db.session.commit()
+        return jsonify({
+            'id': music.id,
+            'url': secure_url,
+            'title': title,
+            'artist': artist
+        }), 201
+    except CloudinaryUploadError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'服务器内部错误: {str(e)}'}), 500
 
 
 @app.route('/api/music/<int:music_id>', methods=['DELETE'])
@@ -517,6 +575,32 @@ def _delete_music_file(music):
 def uploaded_file(subfolder, filename):
     directory = os.path.join(app.config['UPLOAD_FOLDER'], subfolder)
     return send_from_directory(directory, filename)
+
+
+# ─── Error Handlers ──────────────────────────────────────────────────────────
+
+@app.errorhandler(404)
+def not_found_error(e):
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Not found'}), 404
+    return render_template('base.html'), 404
+
+
+@app.errorhandler(500)
+def internal_error(e):
+    db.session.rollback()
+    if request.path.startswith('/api/'):
+        return jsonify({'error': f'服务器内部错误: {str(e)}'}), 500
+    return render_template('base.html'), 500
+
+
+@app.errorhandler(Exception)
+def handle_unhandled(e):
+    db.session.rollback()
+    if request.path.startswith('/api/'):
+        return jsonify({'error': f'服务器内部错误: {str(e)}'}), 500
+    # Re-raise for non-API routes so Flask can handle normally
+    raise e
 
 
 # ─── Main ────────────────────────────────────────────────────────────────────
