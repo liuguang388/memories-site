@@ -202,7 +202,7 @@ def cloudinary_destroy(public_id, resource_type='image'):
 @app.route('/')
 def index():
     categories = Category.query.order_by(Category.sort_order.asc()).all()
-    return render_template('index.html', categories=categories)
+    return render_template('index.html', categories=categories, is_admin=session.get('is_admin', False))
 
 
 @app.route('/login', methods=['GET', 'POST'])
