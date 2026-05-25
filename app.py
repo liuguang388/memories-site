@@ -204,6 +204,22 @@ def index():
     categories = Category.query.order_by(Category.sort_order.asc()).all()
     return render_template('index.html', categories=categories)
 
+@app.route('/debug-tpl')
+def debug_tpl():
+    """Diagnostic: test if template rendering works"""
+    tpl_dir = app.template_folder
+    files = os.listdir(tpl_dir) if os.path.isdir(tpl_dir) else []
+    index_size = os.path.getsize(os.path.join(tpl_dir, 'index.html')) if os.path.isfile(os.path.join(tpl_dir, 'index.html')) else 0
+    base_size = os.path.getsize(os.path.join(tpl_dir, 'base.html')) if os.path.isfile(os.path.join(tpl_dir, 'base.html')) else 0
+    cat_count = Category.query.count()
+    return jsonify({
+        'template_folder': tpl_dir,
+        'files': files,
+        'index_html_bytes': index_size,
+        'base_html_bytes': base_size,
+        'category_count': cat_count
+    })
+
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
