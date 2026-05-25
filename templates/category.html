@@ -1,299 +1,278 @@
-{% extends "base.html" %}
-{% block title %}{{ category.name }} - 记忆时光{% endblock %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>记忆时光</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;600;700;900&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <canvas id="particles-canvas"></canvas>
 
-{% block content %}
-<!-- 分类头部 -->
-<section class="category-hero"
-         {% if category.cover_image %}
-         style="background-image: url('{{ category.cover_image }}');"
-         {% endif %}>
-    <div class="category-hero-overlay"></div>
-    <div class="category-hero-content">
-        <div class="category-hero-icon">{{ category.icon }}</div>
-        <h1 class="category-hero-title">{{ category.name }}</h1>
-        {% if category.description %}
-        <p class="category-hero-desc">{{ category.description }}</p>
-        {% endif %}
-        <div class="category-hero-meta">
-            <span>{{ medias|length }} 份记忆</span>
-            {% if music_list %}
-            <span class="meta-sep">·</span>
-            <span>🎵 有背景音乐</span>
-            {% endif %}
-        </div>
-    </div>
-</section>
-
-<!-- 音乐播放器 -->
-{% if music_list %}
-<div class="music-bar" id="musicBar">
-    <button class="music-toggle" id="musicToggle" title="播放/暂停背景音乐">
-        <span class="music-icon">▶</span>
-    </button>
-    <div class="music-info">
-        <span class="music-title">{{ music_list[0].title }}</span>
-        {% if music_list[0].artist %}
-        <span class="music-artist"> — {{ music_list[0].artist }}</span>
-        {% endif %}
-    </div>
-    <div class="music-volume">
-        <input type="range" id="musicVolume" min="0" max="100" value="30" title="音量">
-    </div>
-    {% if music_list|length > 1 %}
-    <select class="music-playlist" id="musicPlaylist">
-        {% for m in music_list %}
-        <option value="{{ m.filename }}"
-                data-title="{{ m.title }}" data-artist="{{ m.artist }}"
-                {% if loop.first %}selected{% endif %}>
-            {{ m.title }}{% if m.artist %} - {{ m.artist }}{% endif %}
-        </option>
-        {% endfor %}
-    </select>
-    {% endif %}
-    <audio id="bgMusic" src="{{ music_list[0].filename }}" loop preload="auto"></audio>
-</div>
-{% endif %}
-
-<!-- 媒体网格 -->
-<section class="media-section">
-    {% if medias %}
-    <div class="media-grid" id="mediaGrid">
-        {% for media in medias %}
-        <div class="media-item" data-id="{{ media.id }}"
-             style="animation-delay: {{ loop.index0 * 0.05 }}s">
-            {% if media.media_type == 'image' %}
-            <div class="media-thumb" onclick="openLightbox({{ media.id }})">
-                {% if media.thumbnail %}
-                <img src="{{ media.thumbnail }}"
-                     alt="{{ media.description|default('记忆图片') }}" loading="lazy">
+    <nav class="navbar" id="navbar">
+        <div class="nav-container">
+            <a href="/" class="nav-brand">
+                <span class="brand-icon">✦</span>
+                <span class="brand-text">记忆时光</span>
+            </a>
+            <div class="nav-links">
+                <a href="/" class="nav-link">首页</a>
+                {% if session.get('is_admin') %}
+                <a href="/admin" class="nav-link nav-link-admin">管理中心</a>
+                <a href="/logout" class="nav-link nav-link-logout">退出</a>
                 {% else %}
-                <img src="{{ media.filename }}"
-                     alt="{{ media.description|default('记忆图片') }}" loading="lazy">
+                <a href="/login" class="nav-link nav-link-login">管理员</a>
                 {% endif %}
-                <div class="media-overlay">
-                    <span class="media-zoom">🔍</span>
-                </div>
-                <span class="media-badge media-badge-image">📷</span>
             </div>
-            {% else %}
-            <div class="media-thumb media-thumb-video" onclick="openVideoPlayer({{ media.id }})">
-                <video preload="metadata" muted playsinline>
-                    <source src="{{ media.filename }}">
+            <button class="mobile-toggle" id="mobileToggle">
+                <span></span><span></span><span></span>
+            </button>
+        </div>
+    </nav>
+
+    <div class="mobile-menu" id="mobileMenu">
+        <a href="/">首页</a>
+        {% if session.get('is_admin') %}
+        <a href="/admin">管理中心</a>
+        <a href="/logout">退出</a>
+        {% else %}
+        <a href="/login">管理员</a>
+        {% endif %}
+    </div>
+
+    <main class="main-content" id="categoryContent">
+        <div class="empty-state" style="min-height: 60vh; display: flex; align-items: center; justify-content: center;">
+            <div>
+                <div class="empty-icon">⏳</div>
+                <h3>加载中...</h3>
+            </div>
+        </div>
+    </main>
+
+    <div class="lightbox" id="lightbox">
+        <div class="lightbox-backdrop" onclick="closeLightbox()"></div>
+        <button class="lightbox-close" onclick="closeLightbox()">✕</button>
+        <button class="lightbox-prev" onclick="lightboxNav(-1)">‹</button>
+        <button class="lightbox-next" onclick="lightboxNav(1)">›</button>
+        <div class="lightbox-content" id="lightboxContent"></div>
+        <div class="lightbox-info" id="lightboxInfo"></div>
+    </div>
+
+    <div class="inline-player" id="inlinePlayer">
+        <div class="inline-player-backdrop" onclick="closeVideoPlayer()"></div>
+        <button class="inline-player-close" onclick="closeVideoPlayer()">✕</button>
+        <div class="inline-player-container">
+            <div class="inline-player-video-wrap">
+                <video id="inlineVideo" controls playsinline autoplay>
+                    <p>您的浏览器不支持 HTML5 视频播放。</p>
                 </video>
-                <div class="media-overlay">
-                    <span class="media-play-icon">▶</span>
-                </div>
-                <span class="media-badge media-badge-video">🎬</span>
             </div>
-            {% endif %}
-            <div class="media-desc">
-                <p>{{ media.description or '暂无描述' }}</p>
-            </div>
+            <div class="inline-player-info" id="inlinePlayerInfo"></div>
         </div>
-        {% endfor %}
     </div>
-    {% else %}
-    <div class="empty-state">
-        <div class="empty-icon">🖼️</div>
-        <h3>暂无记忆</h3>
-        <p>这个分类还没有收录任何记忆，请稍后再来...</p>
-    </div>
-    {% endif %}
-</section>
 
-<!-- 内联视频播放器 -->
-<div class="inline-player" id="inlinePlayer">
-    <div class="inline-player-backdrop" onclick="closeVideoPlayer()"></div>
-    <button class="inline-player-close" onclick="closeVideoPlayer()">✕</button>
-    <div class="inline-player-container">
-        <div class="inline-player-video-wrap">
-            <video id="inlineVideo" controls playsinline autoplay>
-                <p>您的浏览器不支持 HTML5 视频播放。</p>
-            </video>
+    <footer class="site-footer">
+        <div class="footer-content">
+            <div class="footer-quote">岁月如歌 · 记忆如诗</div>
+            <div class="footer-copy">&copy; 2026 记忆时光</div>
         </div>
-        <div class="inline-player-info" id="inlinePlayerInfo"></div>
-    </div>
-</div>
+    </footer>
 
-<!-- 灯箱 -->
-<div class="lightbox" id="lightbox">
-    <div class="lightbox-backdrop" onclick="closeLightbox()"></div>
-    <button class="lightbox-close" onclick="closeLightbox()">✕</button>
-    <button class="lightbox-prev" onclick="lightboxNav(-1)">‹</button>
-    <button class="lightbox-next" onclick="lightboxNav(1)">›</button>
-    <div class="lightbox-content" id="lightboxContent"></div>
-    <div class="lightbox-info" id="lightboxInfo"></div>
-</div>
+    <script src="{{ url_for('static', filename='js/particles.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script>
+    // Get slug from URL
+    var slug = window.location.pathname.replace('/category/', '').replace(/\/$/, '');
+    var mediaData = [];
+    var currentMediaIndex = 0;
+    var musicData = [];
 
-<a href="{{ url_for('index') }}" class="back-to-home">← 返回记忆长廊</a>
-{% endblock %}
-
-{% block extra_scripts %}
-<script>
-// 媒体数据（用于灯箱和视频播放）
-const mediaData = [
-    {% for m in medias %}
-    {
-        id: {{ m.id }},
-        type: '{{ m.media_type }}',
-        url: '{{ url_for('static', filename=m.filename) }}',
-        description: '{{ m.description|e|default('') }}',
-        created: '{{ m.created_at.strftime('%Y-%m-%d') }}'
-    }{% if not loop.last %},{% endif %}
-    {% endfor %}
-];
-let currentMediaIndex = 0;
-
-// ─── 内联视频播放 ──────────────────────────────────────────────
-function openVideoPlayer(id) {
-    const idx = mediaData.findIndex(m => m.id === id);
-    if (idx === -1) return;
-    currentMediaIndex = idx;
-    const m = mediaData[idx];
-    
-    const inlineVideo = document.getElementById('inlineVideo');
-    const inlinePlayerInfo = document.getElementById('inlinePlayerInfo');
-    
-    // 设置视频源（支持多种格式回退）
-    inlineVideo.innerHTML = '';
-    const ext = m.url.split('.').pop().toLowerCase();
-    let mimeType = 'video/mp4';
-    if (ext === 'webm') mimeType = 'video/webm';
-    else if (ext === 'mov') mimeType = 'video/quicktime';
-    else if (ext === 'avi') mimeType = 'video/x-msvideo';
-    else if (ext === 'mkv') mimeType = 'video/x-matroska';
-    
-    const source = document.createElement('source');
-    source.src = m.url;
-    source.type = mimeType;
-    inlineVideo.appendChild(source);
-    inlineVideo.load();
-    
-    // 显示信息
-    inlinePlayerInfo.innerHTML = `
-        <p class="inline-player-desc">${m.description || ''}</p>
-        <p class="inline-player-date">${m.created}</p>
-    `;
-    
-    document.getElementById('inlinePlayer').classList.add('active');
-    document.body.style.overflow = 'hidden';
-    
-    // 自动播放
-    inlineVideo.play().catch(() => {});
-}
-
-function closeVideoPlayer() {
-    const inlineVideo = document.getElementById('inlineVideo');
-    inlineVideo.pause();
-    document.getElementById('inlinePlayer').classList.remove('active');
-    document.body.style.overflow = '';
-}
-
-// ─── 灯箱（仅图片）─────────────────────────────────────────────
-function openLightbox(id) {
-    const idx = mediaData.findIndex(m => m.id === id);
-    if (idx === -1) return;
-    currentMediaIndex = idx;
-    showLightboxContent();
-    document.getElementById('lightbox').classList.add('active');
-    document.body.style.overflow = 'hidden';
-}
-
-function closeLightbox() {
-    document.getElementById('lightbox').classList.remove('active');
-    document.body.style.overflow = '';
-}
-
-function lightboxNav(dir) {
-    // 跳过视频，只在图片之间导航
-    let nextIdx = currentMediaIndex;
-    do {
-        nextIdx = (nextIdx + dir + mediaData.length) % mediaData.length;
-    } while (mediaData[nextIdx].type === 'video' && nextIdx !== currentMediaIndex);
-    
-    if (mediaData[nextIdx].type === 'video') return; // 全是视频则不变
-    currentMediaIndex = nextIdx;
-    showLightboxContent();
-}
-
-function showLightboxContent() {
-    const m = mediaData[currentMediaIndex];
-    const content = document.getElementById('lightboxContent');
-    const info = document.getElementById('lightboxInfo');
-    
-    content.innerHTML = `<img src="${m.url}" alt="${m.description}">`;
-    
-    info.innerHTML = `
-        <p class="lightbox-desc">${m.description || ''}</p>
-        <p class="lightbox-date">${m.created}</p>
-        <p class="lightbox-counter">${currentMediaIndex + 1} / ${mediaData.length}</p>
-    `;
-}
-
-// 键盘导航
-document.addEventListener('keydown', (e) => {
-    const lightbox = document.getElementById('lightbox');
-    const inlinePlayer = document.getElementById('inlinePlayer');
-    
-    if (lightbox.classList.contains('active')) {
-        if (e.key === 'Escape') closeLightbox();
-        if (e.key === 'ArrowLeft') lightboxNav(-1);
-        if (e.key === 'ArrowRight') lightboxNav(1);
-    }
-    
-    if (inlinePlayer.classList.contains('active')) {
-        if (e.key === 'Escape') closeVideoPlayer();
-    }
-});
-
-// 背景音乐控制
-{% if music_list %}
-const bgMusic = document.getElementById('bgMusic');
-const musicToggle = document.getElementById('musicToggle');
-const musicVolume = document.getElementById('musicVolume');
-const musicPlaylist = document.getElementById('musicPlaylist');
-
-if (bgMusic && musicToggle) {
-    bgMusic.volume = 0.3;
-    
-    musicToggle.addEventListener('click', () => {
-        if (bgMusic.paused) {
-            bgMusic.play();
-            musicToggle.querySelector('.music-icon').textContent = '⏸';
-        } else {
-            bgMusic.pause();
-            musicToggle.querySelector('.music-icon').textContent = '▶';
-        }
-    });
-    
-    musicVolume.addEventListener('input', () => {
-        bgMusic.volume = musicVolume.value / 100;
-    });
-    
-    if (musicPlaylist) {
-        musicPlaylist.addEventListener('change', () => {
-            const opt = musicPlaylist.selectedOptions[0];
-            bgMusic.src = opt.value;
-            bgMusic.play();
-            musicToggle.querySelector('.music-icon').textContent = '⏸';
-            document.querySelector('.music-title').textContent = opt.dataset.title;
-            const artistEl = document.querySelector('.music-artist');
-            if (artistEl) {
-                artistEl.textContent = opt.dataset.artist ? ' — ' + opt.dataset.artist : '';
-            }
+    fetch('/api/category/' + slug)
+        .then(function(res) { return res.json(); })
+        .then(function(cat) {
+            document.title = cat.name + ' - 记忆时光';
+            mediaData = cat.medias.map(function(m) {
+                return { id: m.id, type: m.media_type, url: m.filename, description: m.description, created: m.created_at ? m.created_at.slice(0, 10) : '' };
+            });
+            musicData = cat.music || [];
+            renderCategory(cat);
+        })
+        .catch(function(err) {
+            document.getElementById('categoryContent').innerHTML =
+                '<div class="empty-state" style="min-height:60vh;display:flex;align-items:center;justify-content:center;">'
+                + '<div><div class="empty-icon">😢</div><h3>加载失败</h3><p>请检查网络连接后重试</p>'
+                + '<a href="/" style="color:#d4af37;margin-top:1rem;display:inline-block;">← 返回首页</a></div></div>';
         });
-    }
-    
-    // 首次用户交互后自动播放
-    document.addEventListener('click', function autoPlayOnce() {
-        if (bgMusic.paused) {
-            bgMusic.play().then(() => {
-                musicToggle.querySelector('.music-icon').textContent = '⏸';
-            }).catch(() => {});
+
+    function renderCategory(cat) {
+        var html = '';
+
+        // Hero section
+        html += '<section class="category-hero"'
+            + (cat.cover_image ? ' style="background-image:url(\'' + cat.cover_image + '\')"' : '')
+            + '><div class="category-hero-overlay"></div><div class="category-hero-content">'
+            + '<div class="category-hero-icon">' + cat.icon + '</div>'
+            + '<h1 class="category-hero-title">' + cat.name + '</h1>'
+            + (cat.description ? '<p class="category-hero-desc">' + cat.description + '</p>' : '')
+            + '<div class="category-hero-meta"><span>' + mediaData.length + ' 份记忆</span>'
+            + (musicData.length ? '<span class="meta-sep">·</span><span>🎵 有背景音乐</span>' : '')
+            + '</div></div></section>';
+
+        // Music bar
+        if (musicData.length > 0) {
+            html += '<div class="music-bar" id="musicBar">'
+                + '<button class="music-toggle" id="musicToggle" title="播放/暂停"><span class="music-icon">▶</span></button>'
+                + '<div class="music-info"><span class="music-title">' + musicData[0].title + '</span>'
+                + (musicData[0].artist ? '<span class="music-artist"> — ' + musicData[0].artist + '</span>' : '')
+                + '</div><div class="music-volume"><input type="range" id="musicVolume" min="0" max="100" value="30" title="音量"></div>';
+            if (musicData.length > 1) {
+                html += '<select class="music-playlist" id="musicPlaylist">';
+                musicData.forEach(function(m, i) {
+                    html += '<option value="' + m.filename + '" data-title="' + m.title + '" data-artist="' + (m.artist||'') + '"' + (i===0?' selected':'') + '>'
+                        + m.title + (m.artist ? ' - ' + m.artist : '') + '</option>';
+                });
+                html += '</select>';
+            }
+            html += '<audio id="bgMusic" src="' + musicData[0].filename + '" loop preload="auto"></audio></div>';
         }
-        document.removeEventListener('click', autoPlayOnce);
-    }, { once: true });
-}
-{% endif %}
-</script>
-{% endblock %}
+
+        // Media section
+        html += '<section class="media-section">';
+        if (mediaData.length > 0) {
+            html += '<div class="media-grid" id="mediaGrid">';
+            mediaData.forEach(function(m, i) {
+                html += '<div class="media-item" data-id="' + m.id + '" style="animation-delay:' + (i*0.05) + 's">';
+                if (m.type === 'image') {
+                    html += '<div class="media-thumb" onclick="openLightbox(' + m.id + ')">'
+                        + '<img src="' + m.url + '" alt="' + (m.description||'记忆图片') + '" loading="lazy">'
+                        + '<div class="media-overlay"><span class="media-zoom">🔍</span></div>'
+                        + '<span class="media-badge media-badge-image">📷</span></div>';
+                } else {
+                    html += '<div class="media-thumb media-thumb-video" onclick="openVideoPlayer(' + m.id + ')">'
+                        + '<video preload="metadata" muted playsinline><source src="' + m.url + '"></video>'
+                        + '<div class="media-overlay"><span class="media-play-icon">▶</span></div>'
+                        + '<span class="media-badge media-badge-video">🎬</span></div>';
+                }
+                html += '<div class="media-desc"><p>' + (m.description || '暂无描述') + '</p></div></div>';
+            });
+            html += '</div>';
+        } else {
+            html += '<div class="empty-state"><div class="empty-icon">🖼️</div><h3>暂无记忆</h3><p>这个分类还没有收录任何记忆，请稍后再来...</p></div>';
+        }
+        html += '</section>';
+        html += '<a href="/" class="back-to-home">← 返回记忆长廊</a>';
+
+        document.getElementById('categoryContent').innerHTML = html;
+        initMusicPlayer();
+    }
+
+    function initMusicPlayer() {
+        var bgMusic = document.getElementById('bgMusic');
+        var musicToggle = document.getElementById('musicToggle');
+        var musicVolume = document.getElementById('musicVolume');
+        var musicPlaylist = document.getElementById('musicPlaylist');
+        if (!bgMusic || !musicToggle) return;
+
+        bgMusic.volume = 0.3;
+        musicToggle.addEventListener('click', function() {
+            if (bgMusic.paused) { bgMusic.play(); musicToggle.querySelector('.music-icon').textContent = '⏸'; }
+            else { bgMusic.pause(); musicToggle.querySelector('.music-icon').textContent = '▶'; }
+        });
+        musicVolume.addEventListener('input', function() { bgMusic.volume = musicVolume.value / 100; });
+        if (musicPlaylist) {
+            musicPlaylist.addEventListener('change', function() {
+                var opt = musicPlaylist.selectedOptions[0];
+                bgMusic.src = opt.value;
+                bgMusic.play();
+                musicToggle.querySelector('.music-icon').textContent = '⏸';
+                document.querySelector('.music-title').textContent = opt.dataset.title;
+                var artistEl = document.querySelector('.music-artist');
+                if (artistEl) artistEl.textContent = opt.dataset.artist ? ' — ' + opt.dataset.artist : '';
+            });
+        }
+        document.addEventListener('click', function autoPlay() {
+            if (bgMusic.paused) { bgMusic.play().then(function() {
+                musicToggle.querySelector('.music-icon').textContent = '⏸';
+            }).catch(function(){}); }
+        }, { once: true });
+    }
+
+    // ─── Lightbox ──────────────────────────────────────────────
+    function openLightbox(id) {
+        var idx = -1;
+        for (var i = 0; i < mediaData.length; i++) { if (mediaData[i].id === id) { idx = i; break; } }
+        if (idx === -1) return;
+        currentMediaIndex = idx;
+        showLightboxContent();
+        document.getElementById('lightbox').classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closeLightbox() {
+        document.getElementById('lightbox').classList.remove('active');
+        document.body.style.overflow = '';
+    }
+
+    function lightboxNav(dir) {
+        var nextIdx = currentMediaIndex;
+        do { nextIdx = (nextIdx + dir + mediaData.length) % mediaData.length; }
+        while (mediaData[nextIdx].type === 'video' && nextIdx !== currentMediaIndex);
+        if (mediaData[nextIdx].type === 'video') return;
+        currentMediaIndex = nextIdx;
+        showLightboxContent();
+    }
+
+    function showLightboxContent() {
+        var m = mediaData[currentMediaIndex];
+        document.getElementById('lightboxContent').innerHTML = '<img src="' + m.url + '" alt="' + (m.description||'') + '">';
+        document.getElementById('lightboxInfo').innerHTML =
+            '<p class="lightbox-desc">' + (m.description||'') + '</p>'
+            + '<p class="lightbox-date">' + (m.created||'') + '</p>'
+            + '<p class="lightbox-counter">' + (currentMediaIndex+1) + ' / ' + mediaData.length + '</p>';
+    }
+
+    // ─── Video Player ──────────────────────────────────────────
+    function openVideoPlayer(id) {
+        var idx = -1;
+        for (var i = 0; i < mediaData.length; i++) { if (mediaData[i].id === id) { idx = i; break; } }
+        if (idx === -1) return;
+        currentMediaIndex = idx;
+        var m = mediaData[idx];
+        var video = document.getElementById('inlineVideo');
+        video.innerHTML = '';
+        var ext = m.url.split('.').pop().toLowerCase();
+        var mime = 'video/mp4';
+        if (ext === 'webm') mime = 'video/webm';
+        else if (ext === 'mov') mime = 'video/quicktime';
+        var s = document.createElement('source');
+        s.src = m.url; s.type = mime;
+        video.appendChild(s); video.load();
+        document.getElementById('inlinePlayerInfo').innerHTML =
+            '<p class="inline-player-desc">' + (m.description||'') + '</p>'
+            + '<p class="inline-player-date">' + (m.created||'') + '</p>';
+        document.getElementById('inlinePlayer').classList.add('active');
+        document.body.style.overflow = 'hidden';
+        video.play().catch(function(){});
+    }
+
+    function closeVideoPlayer() {
+        var v = document.getElementById('inlineVideo'); v.pause();
+        document.getElementById('inlinePlayer').classList.remove('active');
+        document.body.style.overflow = '';
+    }
+
+    // Keyboard
+    document.addEventListener('keydown', function(e) {
+        if (document.getElementById('lightbox').classList.contains('active')) {
+            if (e.key === 'Escape') closeLightbox();
+            if (e.key === 'ArrowLeft') lightboxNav(-1);
+            if (e.key === 'ArrowRight') lightboxNav(1);
+        }
+        if (document.getElementById('inlinePlayer').classList.contains('active')) {
+            if (e.key === 'Escape') closeVideoPlayer();
+        }
+    });
+    </script>
+</body>
+</html>

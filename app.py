@@ -239,13 +239,10 @@ def category_page(slug):
             if request.form.get('password') == cat.password:
                 session[f'access_{cat.id}'] = True
             else:
-                flash('密码错误', 'error')
-                return render_template('category_locked.html', category=cat)
+                return render_template('category_locked.html', category=cat, error='密码错误')
         if not session.get(f'access_{cat.id}') and not session.get('is_admin'):
             return render_template('category_locked.html', category=cat)
-    medias = cat.medias.all()
-    music_list = cat.music.all()
-    return render_template('category.html', category=cat, medias=medias, music_list=music_list)
+    return render_template('category.html', category=cat)
 
 
 @app.route('/category/<slug>/unlock', methods=['POST'])
@@ -276,6 +273,37 @@ def api_get_categories():
         'music_count': c.music.count(),
         'created_at': c.created_at.isoformat() if c.created_at else None
     } for c in categories])
+
+
+@app.route('/api/category/<slug>', methods=['GET'])
+def api_get_category(slug):
+    cat = Category.query.filter_by(slug=slug).first_or_404()
+    medias = cat.medias.order_by(Media.sort_order.asc(), Media.created_at.desc()).all()
+    music_list = cat.music.order_by(Music.sort_order.asc()).all()
+    return jsonify({
+        'id': cat.id,
+        'name': cat.name,
+        'slug': cat.slug,
+        'description': cat.description,
+        'icon': cat.icon,
+        'cover_image': cat.cover_image,
+        'password': cat.password,
+        'has_password': bool(cat.password),
+        'medias': [{
+            'id': m.id,
+            'media_type': m.media_type,
+            'filename': m.filename,
+            'thumbnail': m.thumbnail,
+            'description': m.description or '',
+            'created_at': m.created_at.isoformat() if m.created_at else None
+        } for m in medias],
+        'music': [{
+            'id': m.id,
+            'title': m.title,
+            'artist': m.artist,
+            'filename': m.filename
+        } for m in music_list]
+    })
 
 
 @app.route('/api/categories', methods=['POST'])
