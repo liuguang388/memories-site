@@ -279,7 +279,7 @@ def api_get_categories():
 def api_get_category(slug):
     cat = Category.query.filter_by(slug=slug).first_or_404()
     medias = cat.medias.order_by(Media.sort_order.asc(), Media.created_at.desc()).all()
-    music_list = cat.music.order_by(Music.sort_order.asc()).all()
+    music_list = cat.music.order_by(Music.created_at.desc()).all()
     return jsonify({
         'id': cat.id,
         'name': cat.name,
