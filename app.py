@@ -321,7 +321,11 @@ def api_get_category(slug):
 @app.route('/api/categories', methods=['POST'])
 @api_login_required
 def api_create_category():
-    data = request.json
+    # Accept both JSON and form-data
+    if request.is_json:
+        data = request.json
+    else:
+        data = request.form
     if not data or not data.get('name'):
         return jsonify({'error': '分类名称不能为空'}), 400
     slug = data.get('slug') or data['name'].lower().replace(' ', '-')
@@ -331,13 +335,28 @@ def api_create_category():
     while Category.query.filter_by(slug=slug).first():
         slug = f"{base_slug}-{counter}"
         counter += 1
+    
+    cover_image_url = None
+    # Handle cover image upload
+    cover_file = request.files.get('cover_image')
+    if cover_file and cover_file.filename:
+        if not allowed_file(cover_file.filename, ALLOWED_IMAGE):
+            return jsonify({'error': '不支持的图片格式'}), 400
+        try:
+            _, cover_image_url, _ = cloudinary_upload(cover_file, folder='memories-site/covers')
+        except CloudinaryUploadError as e:
+            return jsonify({'error': str(e)}), 400
+        except Exception as e:
+            return jsonify({'error': f'封面上传失败: {str(e)}'}), 500
+    
     cat = Category(
         name=data['name'],
         slug=slug,
         description=data.get('description', ''),
         icon=data.get('icon', '📁'),
         sort_order=data.get('sort_order', 0),
-        password=data.get('password') or None
+        password=data.get('password') or None,
+        cover_image=cover_image_url
     )
     db.session.add(cat)
     db.session.commit()
@@ -348,20 +367,27 @@ def api_create_category():
 @api_login_required
 def api_update_category(cat_id):
     cat = Category.query.get_or_404(cat_id)
-    data = request.json
+    # Accept both JSON and form-data
+    if request.is_json:
+        data = request.json
+    else:
+        data = request.form
     if not data:
         return jsonify({'error': 'No data'}), 400
 
-    if 'name' in data:
+    if data.get('name'):
         cat.name = data['name']
-    if 'description' in data:
+    if data.get('description'):
         cat.description = data['description']
-    if 'icon' in data:
+    if data.get('icon'):
         cat.icon = data['icon']
-    if 'sort_order' in data:
-        cat.sort_order = data['sort_order']
-    if 'password' in data:
-        cat.password = data['password'] or None
+    if data.get('sort_order') is not None:
+        cat.sort_order = int(data['sort_order'])
+    # Check if password removal is requested
+    if data.get('remove_password') == '1':
+        cat.password = None
+    elif data.get('password'):
+        cat.password = data['password']
 
     # Handle cover image upload
     cover_file = request.files.get('cover_image')
