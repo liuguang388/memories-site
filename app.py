@@ -202,7 +202,26 @@ def cloudinary_destroy(public_id, resource_type='image'):
 @app.route('/')
 def index():
     categories = Category.query.order_by(Category.sort_order.asc()).all()
-    return render_template('index.html', categories=categories)
+    # DEBUG: try inline rendering to isolate template inheritance issue
+    from flask import render_template_string
+    cats_html = ''
+    for cat in categories:
+        cats_html += f'<div class="category-card"><h3>{cat.icon} {cat.name}</h3><p>{cat.description}</p></div>'
+    if not cats_html:
+        cats_html = '<div class="empty-state"><h3>记忆长廊正在建设中</h3></div>'
+    
+    html = f'''<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>记忆时光</title>
+<link rel="stylesheet" href="/static/css/style.css"></head>
+<body>
+<nav><a href="/">记忆时光</a></nav>
+<main>
+<section class="hero-section"><h1>岁月如歌 · 记忆如诗</h1></section>
+<section class="categories-section"><h2>记忆长廊</h2><div class="categories-grid">{cats_html}</div></section>
+</main>
+</body></html>'''
+    return html
 
 @app.route('/debug-tpl')
 def debug_tpl():
