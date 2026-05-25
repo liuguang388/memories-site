@@ -261,7 +261,6 @@ def category_unlock(slug):
 # ─── API Routes ──────────────────────────────────────────────────────────────
 
 @app.route('/api/categories', methods=['GET'])
-@api_login_required
 def api_get_categories():
     categories = Category.query.order_by(Category.sort_order.asc()).all()
     return jsonify([{
