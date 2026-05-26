@@ -1310,11 +1310,28 @@ body::before {
 /* Admin media preview */
 .ac-media-preview {
     display: flex;
+    flex-wrap: wrap;
     gap: 12px;
     margin-top: 16px;
-    padding-top: 16px;
+    padding: 16px 4px 0 0;
     border-top: 1px solid var(--border-subtle);
-    overflow-x: auto;
+    overflow-y: auto;
+    max-height: 340px;
+}
+
+/* 滚动条美化 */
+.ac-media-preview::-webkit-scrollbar {
+    width: 6px;
+}
+.ac-media-preview::-webkit-scrollbar-track {
+    background: transparent;
+}
+.ac-media-preview::-webkit-scrollbar-thumb {
+    background: rgba(212, 175, 55, 0.3);
+    border-radius: 3px;
+}
+.ac-media-preview::-webkit-scrollbar-thumb:hover {
+    background: rgba(212, 175, 55, 0.6);
 }
 
 .ac-media-thumb {
