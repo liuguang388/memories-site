@@ -98,13 +98,31 @@ class Music(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
-# Create tables safely - don't crash on DB errors
-try:
+# ─── Database Init & Migration ───────────────────────────────────────────────
+
+def init_db():
+    """Initialize database tables and run schema migrations."""
+    from sqlalchemy import text, inspect
     with app.app_context():
         db.create_all()
-        print("Database tables ready", flush=True)
+        inspector = inspect(db.engine)
+        # Add missing columns to categories
+        existing_cols = {c['name'] for c in inspector.get_columns('categories')}
+        with db.engine.connect() as conn:
+            if 'password' not in existing_cols:
+                conn.execute(text('ALTER TABLE categories ADD COLUMN password VARCHAR(200)'))
+                conn.commit()
+                print('Migration: added categories.password', flush=True)
+            if 'cover_image' not in existing_cols:
+                conn.execute(text("ALTER TABLE categories ADD COLUMN cover_image VARCHAR(500) DEFAULT ''"))
+                conn.commit()
+                print('Migration: added categories.cover_image', flush=True)
+        print('Database tables ready', flush=True)
+
+try:
+    init_db()
 except Exception as e:
-    print(f"WARNING: Database setup error (tables may already exist): {e}", flush=True)
+    print(f'WARNING: Database setup error: {e}', flush=True)
 
 # Validate Cloudinary configuration
 _cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME', '')
