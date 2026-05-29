@@ -84,70 +84,49 @@
     </footer>
 
     <script>
-    // Dynamically load categories from API
-    fetch('/api/categories')
-        .then(function(res) { return res.json(); })
-        .then(function(categories) {
-            var grid = document.getElementById('categoriesGrid');
-            if (!categories || categories.length === 0) {
-                grid.innerHTML = '<div class="empty-state"><div class="empty-icon">📂</div><h3>记忆长廊正在建设中</h3><p>管理员正在精心布置这片记忆空间，敬请期待...</p></div>';
-                return;
+    (function() {
+        function makeCover(cat) {
+            if (cat.cover_image) {
+                return '<img src="' + cat.cover_image + '" alt="' + cat.name + '" loading="lazy">';
             }
-            grid.innerHTML = categories.map(function(cat, i) {
-                var lockBadge = cat.password ? '<span class="card-lock-badge" title="需要密码访问">🔒</span>' : '';
-                var coverHtml = cat.cover_image
-                    ? '<img src="' + cat.cover_image + '" alt="' + cat.name + '" loading="lazy" decoding="async" crossorigin="anonymous" referrerpolicy="no-referrer" onerror="this.parentElement.innerHTML=
-                var descHtml = cat.description ? '<p class="card-desc">' + cat.description + '</p>' : '';
-                return '<a href="/category/' + cat.slug + '" class="category-card" style="animation-delay: ' + (i * 0.1) + 's">'
-                    + '<div class="card-image">' + coverHtml + '<div class="card-image-overlay"></div>' + lockBadge + '</div>'
-                    + '<div class="card-body"><div class="card-icon">' + cat.icon + '</div>'
-                    + '<h3 class="card-title">' + cat.name + '</h3>' + descHtml
-                    + '<span class="card-count">' + (cat.media_count || 0) + ' 份记忆</span></div>'
-                    + '<div class="card-shine"></div></a>';
-            }).join('');
-        })
-        .catch(function() {
-            document.getElementById('categoriesGrid').innerHTML = '<div class="empty-state"><div class="empty-icon">📂</div><h3>记忆长廊正在建设中</h3><p>管理员正在精心布置这片记忆空间，敬请期待...</p></div>';
-        });
-    </script>
+            return '<div class="card-placeholder"><span class="placeholder-icon">' + cat.icon + '</span></div>';
+        }
 
-    <script src="{{ url_for('static', filename='js/particles.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-</body>
-</html>
-<div class=card-placeholder><span class=placeholder-icon>' + cat.icon + '</span></div>
-                var descHtml = cat.description ? '<p class="card-desc">' + cat.description + '</p>' : '';
-                return '<a href="/category/' + cat.slug + '" class="category-card" style="animation-delay: ' + (i * 0.1) + 's">'
-                    + '<div class="card-image">' + coverHtml + '<div class="card-image-overlay"></div>' + lockBadge + '</div>'
-                    + '<div class="card-body"><div class="card-icon">' + cat.icon + '</div>'
-                    + '<h3 class="card-title">' + cat.name + '</h3>' + descHtml
-                    + '<span class="card-count">' + (cat.media_count || 0) + ' 份记忆</span></div>'
-                    + '<div class="card-shine"></div></a>';
-            }).join('');
-        })
-        .catch(function() {
-            document.getElementById('categoriesGrid').innerHTML = '<div class="empty-state"><div class="empty-icon">📂</div><h3>记忆长廊正在建设中</h3><p>管理员正在精心布置这片记忆空间，敬请期待...</p></div>';
-        });
-    </script>
+        function renderCard(cat, i) {
+            var lockBadge = cat.password ? '<span class="card-lock-badge" title="需要密码访问">🔒</span>' : '';
+            var coverHtml = makeCover(cat);
+            var descHtml = cat.description ? '<p class="card-desc">' + cat.description + '</p>' : '';
+            return '<a href="/category/' + cat.slug + '" class="category-card" style="animation-delay:' + (i * 0.1) + 's">'
+                + '<div class="card-image">' + coverHtml + '<div class="card-image-overlay"></div>' + lockBadge + '</div>'
+                + '<div class="card-body"><div class="card-icon">' + cat.icon + '</div>'
+                + '<h3 class="card-title">' + cat.name + '</h3>' + descHtml
+                + '<span class="card-count">' + (cat.media_count || 0) + ' 份记忆</span></div>'
+                + '<div class="card-shine"></div></a>';
+        }
 
-    <script src="{{ url_for('static', filename='js/particles.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-</body>
-</html>
-;">'
-                    : '<div class="card-placeholder"><span class="placeholder-icon">' + cat.icon + '</span></div>';
-                var descHtml = cat.description ? '<p class="card-desc">' + cat.description + '</p>' : '';
-                return '<a href="/category/' + cat.slug + '" class="category-card" style="animation-delay: ' + (i * 0.1) + 's">'
-                    + '<div class="card-image">' + coverHtml + '<div class="card-image-overlay"></div>' + lockBadge + '</div>'
-                    + '<div class="card-body"><div class="card-icon">' + cat.icon + '</div>'
-                    + '<h3 class="card-title">' + cat.name + '</h3>' + descHtml
-                    + '<span class="card-count">' + (cat.media_count || 0) + ' 份记忆</span></div>'
-                    + '<div class="card-shine"></div></a>';
-            }).join('');
-        })
-        .catch(function() {
-            document.getElementById('categoriesGrid').innerHTML = '<div class="empty-state"><div class="empty-icon">📂</div><h3>记忆长廊正在建设中</h3><p>管理员正在精心布置这片记忆空间，敬请期待...</p></div>';
-        });
+        function showEmpty(msg) {
+            document.getElementById('categoriesGrid').innerHTML =
+                '<div class="empty-state"><div class="empty-icon">📂</div><h3>' + msg + '</h3><p>管理员正在精心布置这片记忆空间，敬请期待...</p></div>';
+        }
+
+        fetch('/api/categories')
+            .then(function(res) {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.json();
+            })
+            .then(function(categories) {
+                var grid = document.getElementById('categoriesGrid');
+                if (!categories || !categories.length) {
+                    showEmpty('记忆长廊正在建设中');
+                    return;
+                }
+                grid.innerHTML = categories.map(renderCard).join('');
+            })
+            .catch(function(err) {
+                console.error('加载分类失败:', err);
+                showEmpty('记忆长廊正在建设中');
+            });
+    })();
     </script>
 
     <script src="{{ url_for('static', filename='js/particles.js') }}"></script>
