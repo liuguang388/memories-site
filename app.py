@@ -33,6 +33,17 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
     f'sqlite:///{DATA_DIR / "database.db"}'
 )
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True,
+    'pool_recycle': 300,
+    'connect_args': {
+        'sslmode': 'require',
+        'keepalives': 1,
+        'keepalives_idle': 30,
+        'keepalives_interval': 10,
+        'keepalives_count': 5,
+    }
+}
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max
 app.config['UPLOAD_FOLDER'] = str(DATA_DIR / 'uploads')
 
