@@ -709,6 +709,10 @@ body::before {
     overflow: hidden;
     transition: all var(--transition-smooth);
     animation: fadeInUp 0.5s ease-out both;
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    /* iOS Safari GPU acceleration fix */
+    min-width: 0;
 }
 
 .media-item:hover {
@@ -720,9 +724,11 @@ body::before {
 .media-thumb {
     position: relative;
     width: 100%;
-    height: 260px;
+    aspect-ratio: 4 / 3;
     overflow: hidden;
     cursor: pointer;
+    background: rgba(0, 0, 0, 0.3);
+    /* placeholder bg while loading */
 }
 
 .media-thumb img {
@@ -730,6 +736,12 @@ body::before {
     height: 100%;
     object-fit: cover;
     transition: transform 0.5s ease;
+    display: block;
+}
+
+.media-thumb img[src=""],
+.media-thumb img[src="#"] {
+    display: none;
 }
 
 .media-thumb:hover img {
@@ -740,6 +752,7 @@ body::before {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    display: block;
 }
 
 .media-overlay {
@@ -1893,7 +1906,8 @@ body::before {
     .hero-desc { letter-spacing: 1px; font-size: 15px; }
     
     .categories-grid { grid-template-columns: 1fr; }
-    .media-grid { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
+    .media-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+    .media-section { padding: 0 16px 80px; }
     
     .form-row { grid-template-columns: 1fr; }
     
@@ -1915,6 +1929,8 @@ body::before {
     .hero-content { padding: 20px; }
     .section-title { letter-spacing: 3px; }
     .title-decor { margin: 0 8px; }
-    .media-grid { grid-template-columns: 1fr; }
+    .media-grid { grid-template-columns: 1fr; gap: 12px; }
+    .media-section { padding: 0 12px 60px; }
+    .media-thumb { aspect-ratio: 3 / 2; }
     .admin-page { padding: 100px 16px 60px; }
 }

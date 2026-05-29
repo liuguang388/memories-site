@@ -151,23 +151,28 @@
                 html += '<div class="media-item" data-id="' + m.id + '" style="animation-delay:' + (i*0.05) + 's">';
                 if (m.type === 'image') {
                     html += '<div class="media-thumb" onclick="openLightbox(' + m.id + ')">'
-                        + '<img src="' + m.thumb + '" alt="' + (m.description||'记忆图片') + '" loading="lazy">'
-                        + '<div class="media-overlay"><span class="media-zoom">🔍</span></div>'
-                        + '<span class="media-badge media-badge-image">📷</span></div>';
+                        + '<img src="' + m.thumb + '" alt="' + (m.description||'记忆图片') + '"'
+                        + ' loading="lazy" decoding="async" crossorigin="anonymous" referrerpolicy="no-referrer"'
+                        + ' onerror="this.style.display=\'none\';this.parentElement.innerHTML+=\'<div style=display:flex;align-items:center;justify-content:center;height:100%;color:#6b6966;font-size:14px>\ud83d\uddbc\ufe0f \u52a0\u8f7d\u5931\u8d25</div>\';"'
+                        + '>'
+                        + '<div class="media-overlay"><span class="media-zoom">\ud83d\udd0d</span></div>'
+                        + '<span class="media-badge media-badge-image">\ud83d\udcf7</span></div>';
                 } else {
                     html += '<div class="media-thumb media-thumb-video" onclick="openVideoPlayer(' + m.id + ')">'
-                        + '<video preload="metadata" muted playsinline><source src="' + m.url + '"></video>'
-                        + '<div class="media-overlay"><span class="media-play-icon">▶</span></div>'
-                        + '<span class="media-badge media-badge-video">🎬</span></div>';
+                        + '<video preload="metadata" muted playsinline webkit-playsinline>'
+                        + '<source src="' + m.url + '">'
+                        + '</video>'
+                        + '<div class="media-overlay"><span class="media-play-icon">\u25b6</span></div>'
+                        + '<span class="media-badge media-badge-video">\ud83c\udfac</span></div>';
                 }
                 html += '<div class="media-desc"><p>' + (m.description || '暂无描述') + '</p></div></div>';
             });
             html += '</div>';
         } else {
-            html += '<div class="empty-state"><div class="empty-icon">🖼️</div><h3>暂无记忆</h3><p>这个分类还没有收录任何记忆，请稍后再来...</p></div>';
+            html += '<div class="empty-state"><div class="empty-icon">\ud83d\uddbc\ufe0f</div><h3>暂无记忆</h3><p>这个分类还没有收录任何记忆，请稍后再来...</p></div>';
         }
         html += '</section>';
-        html += '<a href="/" class="back-to-home">← 返回记忆长廊</a>';
+        html += '<a href="/" class="back-to-home">\u2190 返回记忆长廊</a>';
 
         document.getElementById('categoryContent').innerHTML = html;
         initMusicPlayer();
@@ -182,8 +187,8 @@
 
         bgMusic.volume = 0.3;
         musicToggle.addEventListener('click', function() {
-            if (bgMusic.paused) { bgMusic.play(); musicToggle.querySelector('.music-icon').textContent = '⏸'; }
-            else { bgMusic.pause(); musicToggle.querySelector('.music-icon').textContent = '▶'; }
+            if (bgMusic.paused) { bgMusic.play(); musicToggle.querySelector('.music-icon').textContent = '\u23f8'; }
+            else { bgMusic.pause(); musicToggle.querySelector('.music-icon').textContent = '\u25b6'; }
         });
         musicVolume.addEventListener('input', function() { bgMusic.volume = musicVolume.value / 100; });
         if (musicPlaylist) {
@@ -191,15 +196,15 @@
                 var opt = musicPlaylist.selectedOptions[0];
                 bgMusic.src = opt.value;
                 bgMusic.play();
-                musicToggle.querySelector('.music-icon').textContent = '⏸';
+                musicToggle.querySelector('.music-icon').textContent = '\u23f8';
                 document.querySelector('.music-title').textContent = opt.dataset.title;
                 var artistEl = document.querySelector('.music-artist');
-                if (artistEl) artistEl.textContent = opt.dataset.artist ? ' — ' + opt.dataset.artist : '';
+                if (artistEl) artistEl.textContent = opt.dataset.artist ? ' \u2014 ' + opt.dataset.artist : '';
             });
         }
         document.addEventListener('click', function autoPlay() {
             if (bgMusic.paused) { bgMusic.play().then(function() {
-                musicToggle.querySelector('.music-icon').textContent = '⏸';
+                musicToggle.querySelector('.music-icon').textContent = '\u23f8';
             }).catch(function(){}); }
         }, { once: true });
     }
@@ -231,7 +236,7 @@
 
     function showLightboxContent() {
         var m = mediaData[currentMediaIndex];
-        document.getElementById('lightboxContent').innerHTML = '<img src="' + m.url + '" alt="' + (m.description||'') + '">';
+        document.getElementById('lightboxContent').innerHTML = '<img src="' + m.url + '" alt="' + (m.description||'') + '" crossorigin="anonymous" referrerpolicy="no-referrer">';
         document.getElementById('lightboxInfo').innerHTML =
             '<p class="lightbox-desc">' + (m.description||'') + '</p>'
             + '<p class="lightbox-date">' + (m.created||'') + '</p>'

@@ -57,9 +57,9 @@
                      onclick="editMedia({{ m.id }}, '{{ cat.id }}')">
                     {% if m.media_type == 'image' %}
                         {% if m.thumbnail %}
-                        <img src="{{ m.thumbnail }}" alt="预览">
+                        <img src="{{ m.thumbnail }}" alt="预览" loading="lazy" crossorigin="anonymous" referrerpolicy="no-referrer">
                         {% else %}
-                        <img src="{{ m.filename }}" alt="预览">
+                        <img src="{{ m.filename }}" alt="预览" loading="lazy" crossorigin="anonymous" referrerpolicy="no-referrer">
                         {% endif %}
                     {% else %}
                         <video src="{{ m.filename }}" muted></video>
