@@ -102,21 +102,22 @@ class Music(db.Model):
 
 def init_db():
     """Initialize database tables and run schema migrations."""
-    from sqlalchemy import text, inspect
+    from sqlalchemy import text
     with app.app_context():
         db.create_all()
-        inspector = inspect(db.engine)
-        # Add missing columns to categories
-        existing_cols = {c['name'] for c in inspector.get_columns('categories')}
+        # Auto-migrate: try adding missing columns (ignore if already exist)
+        migrations = [
+            ('password', 'VARCHAR(200)'),
+            ('cover_image', "VARCHAR(500) DEFAULT ''"),
+        ]
         with db.engine.connect() as conn:
-            if 'password' not in existing_cols:
-                conn.execute(text('ALTER TABLE categories ADD COLUMN password VARCHAR(200)'))
-                conn.commit()
-                print('Migration: added categories.password', flush=True)
-            if 'cover_image' not in existing_cols:
-                conn.execute(text("ALTER TABLE categories ADD COLUMN cover_image VARCHAR(500) DEFAULT ''"))
-                conn.commit()
-                print('Migration: added categories.cover_image', flush=True)
+            for col_name, col_type in migrations:
+                try:
+                    conn.execute(text(f'ALTER TABLE categories ADD COLUMN {col_name} {col_type}'))
+                    conn.commit()
+                    print(f'Migration: added categories.{col_name}', flush=True)
+                except Exception:
+                    pass  # column already exists or table doesn't exist yet
         print('Database tables ready', flush=True)
 
 try:
