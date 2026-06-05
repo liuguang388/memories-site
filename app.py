@@ -245,6 +245,17 @@ def index():
     return render_template('index.html', categories=categories, is_admin=session.get('is_admin', False))
 
 
+@app.route('/offline')
+def offline():
+    return render_template('offline.html')
+
+
+@app.route('/sw.js')
+def service_worker():
+    """Serve service worker from root path (required for PWA scope)."""
+    return app.send_static_file('js/service-worker.js')
+
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':

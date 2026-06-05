@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>离线 - 记忆时光</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0a0a0f;
+            color: #e8e6e3;
+            font-family: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            display: flex; align-items: center; justify-content: center;
+            min-height: 100vh; min-height: 100dvh;
+            text-align: center;
+            padding: 24px;
+        }
+        .offline-card {
+            background: rgba(20, 20, 30, 0.7);
+            border: 1px solid rgba(212, 175, 55, 0.2);
+            border-radius: 24px;
+            padding: 48px 32px;
+            max-width: 400px;
+            width: 100%;
+        }
+        .offline-icon { font-size: 64px; margin-bottom: 24px; }
+        .offline-title { 
+            font-family: 'Noto Serif SC', serif;
+            font-size: 24px; font-weight: 700;
+            color: #d4af37; margin-bottom: 12px;
+        }
+        .offline-desc { color: #a8a6a3; font-size: 15px; line-height: 1.7; margin-bottom: 32px; }
+        .offline-btn {
+            display: inline-block;
+            background: rgba(212, 175, 55, 0.15);
+            color: #d4af37;
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            padding: 12px 32px;
+            border-radius: 50px;
+            text-decoration: none;
+            font-size: 15px;
+            transition: all 0.3s;
+        }
+        .offline-btn:hover { background: rgba(212, 175, 55, 0.25); }
+        .offline-footer {
+            margin-top: 32px;
+            color: #6b6966;
+            font-size: 12px;
+            letter-spacing: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div class="offline-card">
+        <div class="offline-icon">🌐</div>
+        <h1 class="offline-title">当前处于离线状态</h1>
+        <p class="offline-desc">请检查网络连接后重试。<br>恢复网络后，记忆时光将继续为您呈现那些珍藏的瞬间。</p>
+        <a href="/" class="offline-btn" onclick="window.location.reload()">🔄 重新加载</a>
+        <div class="offline-footer">岁月如歌 · 记忆如诗</div>
+    </div>
+</body>
+</html>
